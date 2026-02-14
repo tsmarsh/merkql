@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::path::PathBuf;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Hash(pub [u8; 32]);
@@ -35,10 +34,6 @@ impl Hash {
         hex::encode(&self.0[1..])
     }
 
-    /// Returns the object path: `{prefix}/{suffix}`
-    pub fn object_path(&self) -> PathBuf {
-        PathBuf::from(self.prefix()).join(self.suffix())
-    }
 }
 
 impl fmt::Debug for Hash {
@@ -96,15 +91,16 @@ mod tests {
     }
 
     #[test]
-    fn object_path_splitting() {
+    fn prefix_suffix_splitting() {
         let h = Hash::digest(b"test");
         let prefix = h.prefix();
         let suffix = h.suffix();
         assert_eq!(prefix.len(), 2);
         assert_eq!(suffix.len(), 62);
 
-        let path = h.object_path();
-        assert_eq!(path, PathBuf::from(&prefix).join(&suffix));
+        // Reconstruct full hex from prefix + suffix
+        let reconstructed = Hash::from_hex(&format!("{}{}", prefix, suffix)).unwrap();
+        assert_eq!(h, reconstructed);
     }
 
     #[test]

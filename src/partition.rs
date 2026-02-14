@@ -36,10 +36,11 @@ impl Partition {
     /// Open or create a partition at the given directory.
     pub fn open(id: u32, dir: impl Into<PathBuf>, compression: Compression) -> Result<Self> {
         let dir = dir.into();
-        let objects_dir = dir.join("objects");
-        fs::create_dir_all(&objects_dir).context("creating partition objects dir")?;
+        fs::create_dir_all(&dir).context("creating partition dir")?;
 
-        let store = ObjectStore::new(objects_dir, compression);
+        let pack_path = dir.join("objects.pack");
+        let objects_dir = dir.join("objects");
+        let store = ObjectStore::open(pack_path, objects_dir, compression)?;
 
         // Restore tree snapshot if it exists
         let snapshot_path = dir.join("tree.snapshot");
@@ -120,12 +121,13 @@ impl Partition {
             .write_all(&record_hash.0)
             .context("writing index entry")?;
 
-        // Flush and fsync index
+        // Flush and fsync index + pack file
         self.index_writer.flush().context("flushing index")?;
         self.index_writer
             .get_ref()
             .sync_all()
             .context("syncing index")?;
+        self.store.flush()?;
 
         // Persist tree snapshot atomically
         let snap = self.tree.snapshot();
@@ -168,6 +170,7 @@ impl Partition {
             .get_ref()
             .sync_all()
             .context("syncing index")?;
+        self.store.flush()?;
 
         // Single atomic snapshot write for entire batch
         let snap = self.tree.snapshot();

@@ -258,10 +258,12 @@ mod tests {
 
     fn test_store() -> (tempfile::TempDir, ObjectStore) {
         let dir = tempfile::tempdir().unwrap();
-        let store = ObjectStore::new(
+        let store = ObjectStore::open(
+            dir.path().join("objects.pack"),
             dir.path().join("objects"),
             crate::compression::Compression::None,
-        );
+        )
+        .unwrap();
         (dir, store)
     }
 

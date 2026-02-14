@@ -8,11 +8,7 @@ use common::*;
 fn crash_drop_without_close() {
     let dir = tempfile::tempdir().unwrap();
     let result = check_crash_recovery(dir.path(), 100, 10);
-    assert!(
-        result.passed,
-        "Crash recovery failed: {}",
-        result.details
-    );
+    assert!(result.passed, "Crash recovery failed: {}", result.details);
     assert_eq!(result.records_after, result.records_before);
 }
 
@@ -22,11 +18,7 @@ fn crash_drop_without_close() {
 fn truncated_tree_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let result = check_truncated_snapshot(dir.path(), 100);
-    assert!(
-        result.passed,
-        "Truncated snapshot: {}",
-        result.details
-    );
+    assert!(result.passed, "Truncated snapshot: {}", result.details);
     // Must be either safe_failure or recovered — never silent corruption
     assert!(
         result.outcome == "safe_failure" || result.outcome == "recovered",
@@ -41,11 +33,7 @@ fn truncated_tree_snapshot() {
 fn truncated_offsets_index() {
     let dir = tempfile::tempdir().unwrap();
     let result = check_truncated_index(dir.path(), 100);
-    assert!(
-        result.passed,
-        "Truncated index: {}",
-        result.details
-    );
+    assert!(result.passed, "Truncated index: {}", result.details);
     // Should have lost exactly one record (the partial entry)
     assert!(
         result.records_after == 99,
@@ -60,11 +48,7 @@ fn truncated_offsets_index() {
 fn missing_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let result = check_missing_snapshot(dir.path(), 100);
-    assert!(
-        result.passed,
-        "Missing snapshot: {}",
-        result.details
-    );
+    assert!(result.passed, "Missing snapshot: {}", result.details);
     assert_eq!(
         result.records_after, 100,
         "All records should be readable without snapshot"
@@ -77,11 +61,7 @@ fn missing_snapshot() {
 fn index_ahead_of_snapshot() {
     let dir = tempfile::tempdir().unwrap();
     let result = check_index_ahead_of_snapshot(dir.path(), 100);
-    assert!(
-        result.passed,
-        "Index ahead of snapshot: {}",
-        result.details
-    );
+    assert!(result.passed, "Index ahead of snapshot: {}", result.details);
     assert_eq!(
         result.records_after, 101,
         "Expected 101 readable records, got {}",

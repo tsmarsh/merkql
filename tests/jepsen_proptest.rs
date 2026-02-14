@@ -102,7 +102,7 @@ proptest! {
                                 offset_reset: OffsetReset::Earliest,
                             },
                         );
-                        let topic_refs: Vec<&str> = topics.iter().map(|s| *s).collect();
+                        let topic_refs: Vec<&str> = topics.to_vec();
                         consumer.subscribe(&topic_refs).unwrap();
                         consumer.poll(Duration::from_millis(10)).unwrap();
                         consumer.commit_sync().unwrap();

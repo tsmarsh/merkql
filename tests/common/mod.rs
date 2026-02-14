@@ -158,11 +158,7 @@ pub struct NemesisResult {
 // Benchmark helpers
 // ---------------------------------------------------------------------------
 
-pub fn measure_latency(
-    name: &str,
-    n: usize,
-    mut f: impl FnMut(usize),
-) -> BenchmarkResult {
+pub fn measure_latency(name: &str, n: usize, mut f: impl FnMut(usize)) -> BenchmarkResult {
     // Warmup: 10% of n, minimum 10
     let warmup = (n / 10).max(10);
     for i in 0..warmup {
@@ -190,7 +186,11 @@ pub fn measure_latency(
         min: hist.min() as f64,
         max: hist.max() as f64,
         stddev: hist.stdev(),
-        throughput: if total_secs > 0.0 { n as f64 / total_secs } else { 0.0 },
+        throughput: if total_secs > 0.0 {
+            n as f64 / total_secs
+        } else {
+            0.0
+        },
         sample_size: n,
     }
 }
@@ -214,7 +214,12 @@ pub fn check_total_order(dir: &Path, n: usize, partitions: u32) -> PropertyResul
         let count = partition.next_offset();
         for offset in 0..count {
             let record = partition.read(offset).unwrap();
-            assert!(record.is_some(), "gap at partition {} offset {}", pid, offset);
+            assert!(
+                record.is_some(),
+                "gap at partition {} offset {}",
+                pid,
+                offset
+            );
             let record = record.unwrap();
             assert_eq!(record.offset, offset);
             assert_eq!(record.partition, pid);
@@ -265,7 +270,12 @@ pub fn check_durability(dir: &Path, n: usize, cycles: usize) -> PropertyResult {
 
     // Reopen and verify all records
     let broker = setup_broker(dir, 1);
-    let consumed = consume_all(&broker, "durability-check", &["durability"], OffsetReset::Earliest);
+    let consumed = consume_all(
+        &broker,
+        "durability-check",
+        &["durability"],
+        OffsetReset::Earliest,
+    );
 
     let consumed_values: Vec<String> = consumed.iter().map(|r| r.value.clone()).collect();
     let passed = consumed_values == all_values;
@@ -275,12 +285,17 @@ pub fn check_durability(dir: &Path, n: usize, cycles: usize) -> PropertyResult {
         claim: "All records survive broker close/reopen cycles".to_string(),
         methodology: format!(
             "Produced {} records across {} close/reopen cycles, verified all readable after final reopen",
-            all_values.len(), cycles
+            all_values.len(),
+            cycles
         ),
         sample_size: all_values.len(),
         passed,
         details: if passed {
-            format!("All {} records survived {} reopen cycles", all_values.len(), cycles)
+            format!(
+                "All {} records survived {} reopen cycles",
+                all_values.len(),
+                cycles
+            )
         } else {
             format!(
                 "Expected {} records, got {}",
@@ -360,10 +375,19 @@ pub fn check_merkle_integrity(dir: &Path, n: usize, partitions: u32) -> Property
         let partition = part_arc.read().unwrap();
         for offset in 0..partition.next_offset() {
             let proof = partition.proof(offset).unwrap();
-            assert!(proof.is_some(), "no proof for partition {} offset {}", pid, offset);
+            assert!(
+                proof.is_some(),
+                "no proof for partition {} offset {}",
+                pid,
+                offset
+            );
             let proof = proof.unwrap();
             let valid = MerkleTree::verify_proof(&proof, partition.store()).unwrap();
-            assert!(valid, "invalid proof for partition {} offset {}", pid, offset);
+            assert!(
+                valid,
+                "invalid proof for partition {} offset {}",
+                pid, offset
+            );
             verified += 1;
         }
     }
@@ -377,7 +401,10 @@ pub fn check_merkle_integrity(dir: &Path, n: usize, partitions: u32) -> Property
         ),
         sample_size: n,
         passed: verified == n,
-        details: format!("All {} proofs verified across {} partitions", verified, partitions),
+        details: format!(
+            "All {} proofs verified across {} partitions",
+            verified, partitions
+        ),
         duration_secs: start.elapsed().as_secs_f64(),
     }
 }
@@ -435,7 +462,12 @@ pub fn check_byte_fidelity(dir: &Path) -> PropertyResult {
         producer.send(&pr).unwrap();
     }
 
-    let consumed = consume_all(&broker, "fidelity-check", &["fidelity"], OffsetReset::Earliest);
+    let consumed = consume_all(
+        &broker,
+        "fidelity-check",
+        &["fidelity"],
+        OffsetReset::Earliest,
+    );
     let mut failures = Vec::new();
     for (i, payload) in payloads.iter().enumerate() {
         if i >= consumed.len() {
@@ -480,9 +512,8 @@ pub fn generate_fidelity_payloads() -> Vec<String> {
 
     // --- Boundary lengths (~27 payloads) ---
     let boundary_sizes: Vec<usize> = vec![
-        0, 1, 2, 31, 32, 33, 63, 64, 65, 127, 128, 129,
-        255, 256, 257, 511, 512, 513, 1023, 1024, 1025,
-        4095, 4096, 4097, 65535, 65536, 65537,
+        0, 1, 2, 31, 32, 33, 63, 64, 65, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1023, 1024,
+        1025, 4095, 4096, 4097, 65535, 65536, 65537,
     ];
     for size in &boundary_sizes {
         payloads.push(generate_payload(*size));
@@ -697,7 +728,7 @@ pub fn generate_fidelity_payloads() -> Vec<String> {
     // We'll take a selection to get ~20
     for ch in &repeat_chars[..4] {
         for &size in &repeat_sizes {
-            payloads.push(std::iter::repeat(*ch).take(size).collect::<String>());
+            payloads.push(std::iter::repeat_n(*ch, size).collect::<String>());
         }
     }
 
@@ -742,11 +773,7 @@ pub fn check_crash_recovery(dir: &Path, records_per_cycle: usize, cycles: usize)
         let broker = Broker::open(broker_config(dir)).unwrap();
         let producer = Broker::producer(&broker);
         for i in 0..records_per_cycle {
-            let pr = ProducerRecord::new(
-                "crash-topic",
-                None,
-                format!("cycle{}-rec{}", cycle, i),
-            );
+            let pr = ProducerRecord::new("crash-topic", None, format!("cycle{}-rec{}", cycle, i));
             producer.send(&pr).unwrap();
         }
         expected_total += records_per_cycle;
@@ -754,21 +781,39 @@ pub fn check_crash_recovery(dir: &Path, records_per_cycle: usize, cycles: usize)
     }
 
     let broker = Broker::open(broker_config(dir)).unwrap();
-    let consumed = consume_all(&broker, "crash-verify", &["crash-topic"], OffsetReset::Earliest);
+    let consumed = consume_all(
+        &broker,
+        "crash-verify",
+        &["crash-topic"],
+        OffsetReset::Earliest,
+    );
 
     let recovered = consumed.len();
     let passed = recovered == expected_total;
 
     NemesisResult {
         name: "Crash Recovery".to_string(),
-        fault: format!("Drop broker without close across {} cycles ({} records/cycle)", cycles, records_per_cycle),
-        outcome: if passed { "recovered".to_string() } else { "data_loss".to_string() },
+        fault: format!(
+            "Drop broker without close across {} cycles ({} records/cycle)",
+            cycles, records_per_cycle
+        ),
+        outcome: if passed {
+            "recovered".to_string()
+        } else {
+            "data_loss".to_string()
+        },
         records_before: expected_total,
         records_after: recovered,
         details: if passed {
-            format!("All {} records survived {} ungraceful drop cycles", expected_total, cycles)
+            format!(
+                "All {} records survived {} ungraceful drop cycles",
+                expected_total, cycles
+            )
         } else {
-            format!("Expected {} records, recovered {}", expected_total, recovered)
+            format!(
+                "Expected {} records, recovered {}",
+                expected_total, recovered
+            )
         },
         passed,
     }
@@ -784,7 +829,10 @@ pub fn check_truncated_snapshot(dir: &Path, n: usize) -> NemesisResult {
 
     // Find and truncate tree.snapshot
     let snapshot_path = find_file_recursive(dir, "tree.snapshot");
-    assert!(snapshot_path.is_some(), "tree.snapshot should exist after producing records");
+    assert!(
+        snapshot_path.is_some(),
+        "tree.snapshot should exist after producing records"
+    );
     let snapshot_path = snapshot_path.unwrap();
     let original_len = std::fs::metadata(&snapshot_path).unwrap().len();
     let truncated_len = original_len / 2;
@@ -815,18 +863,31 @@ pub fn check_truncated_snapshot(dir: &Path, n: usize) -> NemesisResult {
 
             NemesisResult {
                 name: "Truncated Snapshot".to_string(),
-                fault: format!("Truncate tree.snapshot from {} to {} bytes (50%)", original_len, truncated_len),
-                outcome: if records_after == n { "recovered".to_string() } else { "data_loss".to_string() },
+                fault: format!(
+                    "Truncate tree.snapshot from {} to {} bytes (50%)",
+                    original_len, truncated_len
+                ),
+                outcome: if records_after == n {
+                    "recovered".to_string()
+                } else {
+                    "data_loss".to_string()
+                },
                 records_before: n,
                 records_after,
-                details: format!("Broker reopened with {} of {} records readable", records_after, n),
+                details: format!(
+                    "Broker reopened with {} of {} records readable",
+                    records_after, n
+                ),
                 passed: true, // Reopening without error is acceptable
             }
         }
         Err(e) => {
             NemesisResult {
                 name: "Truncated Snapshot".to_string(),
-                fault: format!("Truncate tree.snapshot from {} to {} bytes (50%)", original_len, truncated_len),
+                fault: format!(
+                    "Truncate tree.snapshot from {} to {} bytes (50%)",
+                    original_len, truncated_len
+                ),
                 outcome: "safe_failure".to_string(),
                 records_before: n,
                 records_after: 0,
@@ -845,7 +906,10 @@ pub fn check_truncated_index(dir: &Path, n: usize) -> NemesisResult {
     }
 
     let index_path = find_file_recursive(dir, "offsets.idx");
-    assert!(index_path.is_some(), "offsets.idx should exist after producing records");
+    assert!(
+        index_path.is_some(),
+        "offsets.idx should exist after producing records"
+    );
     let index_path = index_path.unwrap();
     let original_len = std::fs::metadata(&index_path).unwrap().len();
     let truncated_len = original_len - 16; // Remove half an entry (entry = 32 bytes)
@@ -877,8 +941,16 @@ pub fn check_truncated_index(dir: &Path, n: usize) -> NemesisResult {
 
             NemesisResult {
                 name: "Truncated Index".to_string(),
-                fault: format!("Truncate offsets.idx by 16 bytes ({} -> {} entries)", original_len / 32, expected_entries),
-                outcome: if passed { "recovered".to_string() } else { "data_loss".to_string() },
+                fault: format!(
+                    "Truncate offsets.idx by 16 bytes ({} -> {} entries)",
+                    original_len / 32,
+                    expected_entries
+                ),
+                outcome: if passed {
+                    "recovered".to_string()
+                } else {
+                    "data_loss".to_string()
+                },
                 records_before: n,
                 records_after: readable,
                 details: format!(
@@ -888,17 +960,15 @@ pub fn check_truncated_index(dir: &Path, n: usize) -> NemesisResult {
                 passed,
             }
         }
-        Err(e) => {
-            NemesisResult {
-                name: "Truncated Index".to_string(),
-                fault: format!("Truncate offsets.idx by 16 bytes"),
-                outcome: "safe_failure".to_string(),
-                records_before: n,
-                records_after: 0,
-                details: format!("Broker failed to reopen: {}", e),
-                passed: false,
-            }
-        }
+        Err(e) => NemesisResult {
+            name: "Truncated Index".to_string(),
+            fault: "Truncate offsets.idx by 16 bytes".to_string(),
+            outcome: "safe_failure".to_string(),
+            records_before: n,
+            records_after: 0,
+            details: format!("Broker failed to reopen: {}", e),
+            passed: false,
+        },
     }
 }
 
@@ -910,7 +980,10 @@ pub fn check_missing_snapshot(dir: &Path, n: usize) -> NemesisResult {
     }
 
     let snapshot_path = find_file_recursive(dir, "tree.snapshot");
-    assert!(snapshot_path.is_some(), "tree.snapshot should exist after producing records");
+    assert!(
+        snapshot_path.is_some(),
+        "tree.snapshot should exist after producing records"
+    );
     let snapshot_path = snapshot_path.unwrap();
     std::fs::remove_file(&snapshot_path).unwrap();
 
@@ -940,27 +1013,31 @@ pub fn check_missing_snapshot(dir: &Path, n: usize) -> NemesisResult {
             NemesisResult {
                 name: "Missing Snapshot".to_string(),
                 fault: "Delete tree.snapshot file and reopen".to_string(),
-                outcome: if passed { "recovered".to_string() } else { "data_loss".to_string() },
+                outcome: if passed {
+                    "recovered".to_string()
+                } else {
+                    "data_loss".to_string()
+                },
                 records_before: n,
                 records_after: readable,
                 details: format!(
                     "{} of {} records readable, append after delete: {}",
-                    readable, n, if append_ok { "succeeded" } else { "failed" }
+                    readable,
+                    n,
+                    if append_ok { "succeeded" } else { "failed" }
                 ),
                 passed,
             }
         }
-        Err(e) => {
-            NemesisResult {
-                name: "Missing Snapshot".to_string(),
-                fault: "Delete tree.snapshot file and reopen".to_string(),
-                outcome: "safe_failure".to_string(),
-                records_before: n,
-                records_after: 0,
-                details: format!("Broker failed to reopen: {}", e),
-                passed: false,
-            }
-        }
+        Err(e) => NemesisResult {
+            name: "Missing Snapshot".to_string(),
+            fault: "Delete tree.snapshot file and reopen".to_string(),
+            outcome: "safe_failure".to_string(),
+            records_before: n,
+            records_after: 0,
+            details: format!("Broker failed to reopen: {}", e),
+            passed: false,
+        },
     }
 }
 
@@ -1002,12 +1079,10 @@ pub fn check_index_ahead_of_snapshot(dir: &Path, n: usize) -> NemesisResult {
             let mut proof_errors = 0;
             for offset in 0..partition.next_offset() {
                 match partition.proof(offset) {
-                    Ok(Some(proof)) => {
-                        match MerkleTree::verify_proof(&proof, partition.store()) {
-                            Ok(true) => valid_proofs += 1,
-                            Ok(false) | Err(_) => proof_errors += 1,
-                        }
-                    }
+                    Ok(Some(proof)) => match MerkleTree::verify_proof(&proof, partition.store()) {
+                        Ok(true) => valid_proofs += 1,
+                        Ok(false) | Err(_) => proof_errors += 1,
+                    },
                     Ok(None) | Err(_) => proof_errors += 1,
                 }
             }
@@ -1017,8 +1092,16 @@ pub fn check_index_ahead_of_snapshot(dir: &Path, n: usize) -> NemesisResult {
 
             NemesisResult {
                 name: "Index Ahead of Snapshot".to_string(),
-                fault: format!("Revert tree.snapshot to state with {} records, index has {} entries", n, n + 1),
-                outcome: if passed { "recovered".to_string() } else { "data_loss".to_string() },
+                fault: format!(
+                    "Revert tree.snapshot to state with {} records, index has {} entries",
+                    n,
+                    n + 1
+                ),
+                outcome: if passed {
+                    "recovered".to_string()
+                } else {
+                    "data_loss".to_string()
+                },
                 records_before: n + 1,
                 records_after: readable,
                 details: format!(
@@ -1028,16 +1111,14 @@ pub fn check_index_ahead_of_snapshot(dir: &Path, n: usize) -> NemesisResult {
                 passed,
             }
         }
-        Err(e) => {
-            NemesisResult {
-                name: "Index Ahead of Snapshot".to_string(),
-                fault: format!("Revert tree.snapshot to pre-{} state", n + 1),
-                outcome: "safe_failure".to_string(),
-                records_before: n + 1,
-                records_after: 0,
-                details: format!("Broker failed to reopen: {}", e),
-                passed: false,
-            }
-        }
+        Err(e) => NemesisResult {
+            name: "Index Ahead of Snapshot".to_string(),
+            fault: format!("Revert tree.snapshot to pre-{} state", n + 1),
+            outcome: "safe_failure".to_string(),
+            records_before: n + 1,
+            records_after: 0,
+            details: format!("Broker failed to reopen: {}", e),
+            passed: false,
+        },
     }
 }

@@ -316,10 +316,11 @@
         An embedded event log for Rust.
     </p>
     <div class="pills">
-        <span class="pill"><span class="dot dot-green"></span> 91 tests passing</span>
+        <span class="pill"><span class="dot dot-green"></span> 101 tests passing</span>
         <span class="pill"><span class="dot dot-blue"></span> Crash-safe</span>
         <span class="pill"><span class="dot dot-orange"></span> LZ4 compression</span>
         <span class="pill"><span class="dot dot-purple"></span> Jepsen-verified</span>
+        <span class="pill"><span class="dot dot-green"></span> Fuzz-tested</span>
     </div>
     <div class="hero-cta">
         <a href="https://github.com/tsmarsh/merkql" class="btn btn-pri">View on GitHub</a>
@@ -362,6 +363,31 @@
             <p>All state survives restarts. Optional LZ4 compression. Configurable retention with max_records per topic. Batch API amortizes fsync.</p>
         </div>
     </div>
+</section>
+
+<!-- ════════════ Performance ════════════ -->
+<section class="divider">
+    <h2>Performance</h2>
+    <p>Single-threaded, single-partition, uncompressed. Batch writes amortize fsync.</p>
+    <div class="stat-row">
+        <div class="stat">
+            <span class="num">31 us</span>
+            <span class="lbl">append latency (256B)</span>
+        </div>
+        <div class="stat">
+            <span class="num">179K/s</span>
+            <span class="lbl">sequential read</span>
+        </div>
+        <div class="stat">
+            <span class="num">4.8 us</span>
+            <span class="lbl">random-access read</span>
+        </div>
+        <div class="stat">
+            <span class="num">150 us</span>
+            <span class="lbl">proof gen+verify (10K)</span>
+        </div>
+    </div>
+    <p>See <a href="https://github.com/tsmarsh/merkql/blob/main/BENCHMARKS.md">BENCHMARKS.md</a> for full results.</p>
 </section>
 
 <!-- ════════════ Use cases ════════════ -->
@@ -549,7 +575,7 @@ producer.<span class="fn">send_batch</span>(&amp;records).<span class="fn">unwra
 
     <div class="stat-row">
         <div class="stat">
-            <span class="num">91</span>
+            <span class="num">101</span>
             <span class="lbl">tests passing</span>
         </div>
         <div class="stat">

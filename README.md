@@ -128,6 +128,19 @@ Run your Kafka-based microservices locally without Docker Compose. Point your se
 | **Persistent** | All state survives process restarts. Topics, partitions, offsets, and tree snapshots are durable |
 | **Zero runtime dependencies** | No external services, no JVM, no network, no ZooKeeper |
 
+## Performance
+
+| Operation | Result |
+|---|---|
+| **Append (256B)** | 31 us / 7.9 MB/s |
+| **Append (64KB)** | 103 us / 608 MB/s |
+| **Sequential read (10K)** | 179K records/sec |
+| **Random-access read** | 4.8 us |
+| **Proof generate+verify (10K)** | 150 us |
+| **Broker reopen (50K records)** | 14 us |
+
+Batch writes amortize fsync — `send_batch()` uses 1 fsync per batch instead of 1 per record. See [BENCHMARKS.md](BENCHMARKS.md) for full results.
+
 ## Quick Start
 
 Add to your `Cargo.toml`:
@@ -257,7 +270,7 @@ Every object is stored in a git-style content-addressed store keyed by its SHA-2
 
 ## Correctness
 
-merkql ships with a Jepsen-style test suite: data-backed claims about correctness at scale, fault injection with real assertions, and property-based testing with random operation sequences.
+merkql ships with a Jepsen-style test suite: data-backed claims about correctness at scale, fault injection with real assertions, and property-based testing with random operation sequences. See [FAILURE-MODES.md](FAILURE-MODES.md) for a complete catalog of failure scenarios, recovery behavior, and what is and isn't tested.
 
 ### Properties verified
 
@@ -305,13 +318,18 @@ Every fault test asserts correctness — not just "it didn't crash":
 ### Running the tests
 
 ```bash
-cargo test                                     # All 91 tests
+cargo test                                     # All 91 unit/integration tests
 cargo test --test jepsen_checkers              # Correctness checkers
 cargo test --test jepsen_nemesis               # Fault injection
 cargo test --test jepsen_proptest              # Property-based tests
 cargo test --test v2_features_test             # Concurrency, compression, retention
 cargo test --test jepsen_report -- --nocapture # JSON report
+cargo test --doc                               # Doc-tests (10 examples)
+cargo test --release --test scale_test -- --ignored  # 100K-record scale tests
 cargo bench                                    # Criterion benchmarks
+scripts/run-fuzz.sh                            # Fuzz testing (cargo-fuzz)
+scripts/run-miri.sh                            # Miri (pure-computation tests)
+scripts/run-tsan.sh                            # Thread sanitizer (concurrent tests)
 ```
 
 ## Building

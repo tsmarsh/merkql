@@ -19,6 +19,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-targets
 
+  doc-test:
+    name: Doc-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --doc
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
@@ -39,3 +48,45 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --check
+
+  fuzz-smoke:
+    name: Fuzz smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz
+      - run: |
+          for target in decompress node_deser record_deser snapshot_deser hash_from_hex group_offsets topic_config retention_marker index_entry; do
+            echo "=== Fuzzing: $target (10s) ==="
+            cargo fuzz run "$target" -- -max_total_time=10
+          done
+
+  miri:
+    name: Miri
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - run: |
+          cargo +nightly miri test hash::tests
+          cargo +nightly miri test node::tests
+          cargo +nightly miri test compression::tests -- --skip large_data
+          cargo +nightly miri test record::tests
+
+  tsan:
+    name: Thread Sanitizer
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rust-src
+      - run: |
+          RUSTFLAGS="-Z sanitizer=thread" \
+            cargo +nightly test --test v2_features_test -- concurrent

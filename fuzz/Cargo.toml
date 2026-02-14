@@ -1,0 +1,58 @@
+[package]
+name = "merkql-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+merkql = { path = ".." }
+bincode = "1"
+
+[[bin]]
+name = "decompress"
+path = "fuzz_targets/decompress.rs"
+doc = false
+
+[[bin]]
+name = "node_deser"
+path = "fuzz_targets/node_deser.rs"
+doc = false
+
+[[bin]]
+name = "record_deser"
+path = "fuzz_targets/record_deser.rs"
+doc = false
+
+[[bin]]
+name = "snapshot_deser"
+path = "fuzz_targets/snapshot_deser.rs"
+doc = false
+
+[[bin]]
+name = "hash_from_hex"
+path = "fuzz_targets/hash_from_hex.rs"
+doc = false
+
+[[bin]]
+name = "group_offsets"
+path = "fuzz_targets/group_offsets.rs"
+doc = false
+
+[[bin]]
+name = "topic_config"
+path = "fuzz_targets/topic_config.rs"
+doc = false
+
+[[bin]]
+name = "retention_marker"
+path = "fuzz_targets/retention_marker.rs"
+doc = false
+
+[[bin]]
+name = "index_entry"
+path = "fuzz_targets/index_entry.rs"
+doc = false

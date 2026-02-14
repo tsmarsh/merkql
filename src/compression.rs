@@ -5,8 +5,21 @@ use serde::{Deserialize, Serialize};
 /// A 1-byte marker at the start of every stored object identifies the compression:
 /// 0x00 = None, 0x01 = LZ4.
 /// This allows mixed-mode reads — a broker can switch compression without corrupting existing data.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// # Examples
+///
+/// ```
+/// use merkql::compression::Compression;
+/// use merkql::broker::BrokerConfig;
+///
+/// let config = BrokerConfig {
+///     compression: Compression::Lz4,
+///     ..BrokerConfig::new("/tmp/merkql-compression-example")
+/// };
+/// ```
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Compression {
+    #[default]
     None,
     Lz4,
 }
@@ -43,19 +56,13 @@ impl Compression {
         match data[0] {
             MARKER_NONE => Ok(data[1..].to_vec()),
             MARKER_LZ4 => {
-                lz4_flex::decompress_size_prepended(&data[1..])
-                    .context("lz4 decompression failed")
+                lz4_flex::decompress_size_prepended(&data[1..]).context("lz4 decompression failed")
             }
             marker => bail!("unknown compression marker: 0x{:02x}", marker),
         }
     }
 }
 
-impl Default for Compression {
-    fn default() -> Self {
-        Compression::None
-    }
-}
 
 #[cfg(test)]
 mod tests {

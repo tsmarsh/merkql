@@ -93,10 +93,14 @@ fn generate_jepsen_report() {
         let producer = Broker::producer(&broker);
         let payload = generate_payload(256);
 
-        benchmarks.push(measure_latency("Append Latency (256B payload)", 1000, |_| {
-            let pr = ProducerRecord::new("bench-append", None, payload.clone());
-            producer.send(&pr).unwrap();
-        }));
+        benchmarks.push(measure_latency(
+            "Append Latency (256B payload)",
+            1000,
+            |_| {
+                let pr = ProducerRecord::new("bench-append", None, payload.clone());
+                producer.send(&pr).unwrap();
+            },
+        ));
     }
 
     eprintln!("Running benchmark: Append Latency by Payload Size...");
@@ -120,7 +124,13 @@ fn generate_jepsen_report() {
     {
         let dir = tempfile::tempdir().unwrap();
         let broker = setup_broker(dir.path(), 1);
-        produce_n(&broker, "bench-read", 10_000, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "bench-read",
+            10_000,
+            |i| format!("v{}", i),
+            |_| None,
+        );
 
         benchmarks.push(measure_latency("Read Latency (sequential)", 10_000, |i| {
             let topic = broker.topic("bench-read").unwrap();
@@ -134,37 +144,63 @@ fn generate_jepsen_report() {
     {
         let dir = tempfile::tempdir().unwrap();
         let broker = setup_broker(dir.path(), 1);
-        produce_n(&broker, "bench-read-tp", 10_000, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "bench-read-tp",
+            10_000,
+            |i| format!("v{}", i),
+            |_| None,
+        );
 
-        benchmarks.push(measure_latency("Read Throughput (10K sequential scan)", 10_000, |i| {
-            let topic = broker.topic("bench-read-tp").unwrap();
-            let part_arc = topic.partition(0).unwrap();
-            let partition = part_arc.read().unwrap();
-            let _ = partition.read(i as u64).unwrap();
-        }));
+        benchmarks.push(measure_latency(
+            "Read Throughput (10K sequential scan)",
+            10_000,
+            |i| {
+                let topic = broker.topic("bench-read-tp").unwrap();
+                let part_arc = topic.partition(0).unwrap();
+                let partition = part_arc.read().unwrap();
+                let _ = partition.read(i as u64).unwrap();
+            },
+        ));
     }
 
     eprintln!("Running benchmark: Proof Generation...");
     {
         let dir = tempfile::tempdir().unwrap();
         let broker = setup_broker(dir.path(), 1);
-        produce_n(&broker, "bench-proof", 10_000, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "bench-proof",
+            10_000,
+            |i| format!("v{}", i),
+            |_| None,
+        );
 
-        benchmarks.push(measure_latency("Proof Generate + Verify (10K log)", 1000, |i| {
-            let topic = broker.topic("bench-proof").unwrap();
-            let part_arc = topic.partition(0).unwrap();
-            let partition = part_arc.read().unwrap();
-            let offset = (i * 7) as u64 % partition.next_offset(); // prime stride
-            let proof = partition.proof(offset).unwrap().unwrap();
-            let _ = merkql::tree::MerkleTree::verify_proof(&proof, partition.store()).unwrap();
-        }));
+        benchmarks.push(measure_latency(
+            "Proof Generate + Verify (10K log)",
+            1000,
+            |i| {
+                let topic = broker.topic("bench-proof").unwrap();
+                let part_arc = topic.partition(0).unwrap();
+                let partition = part_arc.read().unwrap();
+                let offset = (i * 7) as u64 % partition.next_offset(); // prime stride
+                let proof = partition.proof(offset).unwrap().unwrap();
+                let _ = merkql::tree::MerkleTree::verify_proof(&proof, partition.store()).unwrap();
+            },
+        ));
     }
 
     eprintln!("Running benchmark: Broker Reopen...");
     {
         let dir = tempfile::tempdir().unwrap();
         let broker = setup_broker(dir.path(), 1);
-        produce_n(&broker, "bench-reopen", 10_000, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "bench-reopen",
+            10_000,
+            |i| format!("v{}", i),
+            |_| None,
+        );
         drop(broker);
 
         benchmarks.push(measure_latency("Broker Reopen (10K records)", 20, |_| {
@@ -193,7 +229,11 @@ fn generate_jepsen_report() {
 
     // Assert all properties passed
     for prop in &report.properties {
-        assert!(prop.passed, "Property '{}' failed: {}", prop.name, prop.details);
+        assert!(
+            prop.passed,
+            "Property '{}' failed: {}",
+            prop.name, prop.details
+        );
     }
 
     // Assert all nemesis tests passed

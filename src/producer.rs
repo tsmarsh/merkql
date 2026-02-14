@@ -14,6 +14,19 @@ impl Producer {
     }
 
     /// Send a record. Auto-creates the topic if the broker is configured for it.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merkql::broker::{Broker, BrokerConfig};
+    /// use merkql::record::ProducerRecord;
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+    /// let producer = Broker::producer(&broker);
+    /// let record = producer.send(&ProducerRecord::new("events", None, "hello")).unwrap();
+    /// assert_eq!(record.value, "hello");
+    /// ```
     pub fn send(&self, producer_record: &ProducerRecord) -> Result<Record> {
         // Ensure topic exists (auto-create if configured)
         self.broker.ensure_topic(&producer_record.topic)?;
@@ -38,6 +51,22 @@ impl Producer {
 
     /// Send a batch of records to the same topic.
     /// Returns all records with their assigned offsets and partitions.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merkql::broker::{Broker, BrokerConfig};
+    /// use merkql::record::ProducerRecord;
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+    /// let producer = Broker::producer(&broker);
+    /// let batch: Vec<ProducerRecord> = (0..3)
+    ///     .map(|i| ProducerRecord::new("events", None, format!("msg-{}", i)))
+    ///     .collect();
+    /// let results = producer.send_batch(&batch).unwrap();
+    /// assert_eq!(results.len(), 3);
+    /// ```
     pub fn send_batch(&self, producer_records: &[ProducerRecord]) -> Result<Vec<Record>> {
         if producer_records.is_empty() {
             return Ok(Vec::new());

@@ -9,15 +9,22 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Retention policy configuration for a topic.
+///
+/// # Examples
+///
+/// ```
+/// use merkql::broker::BrokerConfig;
+/// use merkql::topic::RetentionConfig;
+///
+/// let config = BrokerConfig {
+///     default_retention: RetentionConfig { max_records: Some(10_000) },
+///     ..BrokerConfig::new("/tmp/merkql-retention-example")
+/// };
+/// ```
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct RetentionConfig {
     pub max_records: Option<u64>,
-}
-
-impl Default for RetentionConfig {
-    fn default() -> Self {
-        RetentionConfig { max_records: None }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,9 +152,8 @@ impl Topic {
                 val % self.config.num_partitions
             }
             None => {
-                let id = self.round_robin_counter.fetch_add(1, Ordering::Relaxed)
-                    % self.config.num_partitions;
-                id
+                self.round_robin_counter.fetch_add(1, Ordering::Relaxed)
+                    % self.config.num_partitions
             }
         }
     }

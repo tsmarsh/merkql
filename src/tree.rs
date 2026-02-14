@@ -153,6 +153,25 @@ impl MerkleTree {
 
     /// Verify a proof against a claimed root. Pure computation — no I/O needed
     /// beyond reading the sibling nodes to reconstruct branch hashes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merkql::broker::{Broker, BrokerConfig};
+    /// use merkql::record::ProducerRecord;
+    /// use merkql::tree::MerkleTree;
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+    /// let producer = Broker::producer(&broker);
+    /// producer.send(&ProducerRecord::new("t", None, "data")).unwrap();
+    ///
+    /// let topic = broker.topic("t").unwrap();
+    /// let part_arc = topic.partition(0).unwrap();
+    /// let partition = part_arc.read().unwrap();
+    /// let proof = partition.proof(0).unwrap().unwrap();
+    /// assert!(MerkleTree::verify_proof(&proof, partition.store()).unwrap());
+    /// ```
     pub fn verify_proof(proof: &Proof, store: &ObjectStore) -> Result<bool> {
         let mut current = proof.leaf_hash;
 
@@ -239,7 +258,10 @@ mod tests {
 
     fn test_store() -> (tempfile::TempDir, ObjectStore) {
         let dir = tempfile::tempdir().unwrap();
-        let store = ObjectStore::new(dir.path().join("objects"), crate::compression::Compression::None);
+        let store = ObjectStore::new(
+            dir.path().join("objects"),
+            crate::compression::Compression::None,
+        );
         (dir, store)
     }
 

@@ -49,6 +49,15 @@ pub struct Broker {
 
 impl Broker {
     /// Open or create a broker, scanning for existing topics.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merkql::broker::{Broker, BrokerConfig};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+    /// ```
     pub fn open(config: BrokerConfig) -> Result<BrokerRef> {
         let merkql_dir = config.data_dir.join(".merkql");
         fs::create_dir_all(&merkql_dir).context("creating .merkql dir")?;
@@ -98,11 +107,38 @@ impl Broker {
     }
 
     /// Create a consumer for this broker.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merkql::broker::{Broker, BrokerConfig};
+    /// use merkql::consumer::{ConsumerConfig, OffsetReset};
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+    /// let mut consumer = Broker::consumer(&broker, ConsumerConfig {
+    ///     group_id: "my-group".into(),
+    ///     auto_commit: false,
+    ///     offset_reset: OffsetReset::Earliest,
+    /// });
+    /// ```
     pub fn consumer(broker: &BrokerRef, config: ConsumerConfig) -> Consumer {
         Consumer::new(Arc::clone(broker), config)
     }
 
     /// Create a producer for this broker.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use merkql::broker::{Broker, BrokerConfig};
+    /// use merkql::record::ProducerRecord;
+    ///
+    /// let dir = tempfile::tempdir().unwrap();
+    /// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+    /// let producer = Broker::producer(&broker);
+    /// producer.send(&ProducerRecord::new("topic", None, "value")).unwrap();
+    /// ```
     pub fn producer(broker: &BrokerRef) -> Producer {
         Producer::new(Arc::clone(broker))
     }

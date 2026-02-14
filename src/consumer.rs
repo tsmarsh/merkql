@@ -20,6 +20,34 @@ pub struct ConsumerConfig {
 }
 
 /// Kafka-compatible consumer. Owns a reference to the broker.
+///
+/// # Examples
+///
+/// ```
+/// use merkql::broker::{Broker, BrokerConfig};
+/// use merkql::consumer::{ConsumerConfig, OffsetReset};
+/// use merkql::record::ProducerRecord;
+/// use std::time::Duration;
+///
+/// let dir = tempfile::tempdir().unwrap();
+/// let broker = Broker::open(BrokerConfig::new(dir.path())).unwrap();
+///
+/// // Produce some records first
+/// let producer = Broker::producer(&broker);
+/// producer.send(&ProducerRecord::new("events", None, "hello")).unwrap();
+///
+/// // Subscribe, poll, commit, close
+/// let mut consumer = Broker::consumer(&broker, ConsumerConfig {
+///     group_id: "example".into(),
+///     auto_commit: false,
+///     offset_reset: OffsetReset::Earliest,
+/// });
+/// consumer.subscribe(&["events"]).unwrap();
+/// let records = consumer.poll(Duration::from_millis(100)).unwrap();
+/// assert_eq!(records.len(), 1);
+/// consumer.commit_sync().unwrap();
+/// consumer.close().unwrap();
+/// ```
 pub struct Consumer {
     broker: BrokerRef,
     config: ConsumerConfig,
@@ -58,13 +86,10 @@ impl Consumer {
                     };
 
                     // Check committed offset
-                    let committed = self
-                        .broker
-                        .group(&self.config.group_id)
-                        .and_then(|g| {
-                            let guard = g.lock().unwrap();
-                            guard.committed_offset(&tp)
-                        });
+                    let committed = self.broker.group(&self.config.group_id).and_then(|g| {
+                        let guard = g.lock().unwrap();
+                        guard.committed_offset(&tp)
+                    });
 
                     let position = match committed {
                         Some(off) => off, // Resume from committed offset
@@ -96,17 +121,17 @@ impl Consumer {
         let mut records = Vec::new();
 
         for (tp, position) in &mut self.positions {
-            if let Some(topic) = self.broker.topic(&tp.topic) {
-                if let Some(part_arc) = topic.partition(tp.partition) {
-                    let part = part_arc
-                        .read()
-                        .map_err(|e| anyhow::anyhow!("partition read lock: {}", e))?;
-                    let tail = part.next_offset();
-                    if *position < tail {
-                        let batch = part.read_range(*position, tail)?;
-                        *position = tail;
-                        records.extend(batch);
-                    }
+            if let Some(topic) = self.broker.topic(&tp.topic)
+                && let Some(part_arc) = topic.partition(tp.partition)
+            {
+                let part = part_arc
+                    .read()
+                    .map_err(|e| anyhow::anyhow!("partition read lock: {}", e))?;
+                let tail = part.next_offset();
+                if *position < tail {
+                    let batch = part.read_range(*position, tail)?;
+                    *position = tail;
+                    records.extend(batch);
                 }
             }
         }

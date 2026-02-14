@@ -62,11 +62,8 @@ fn concurrent_producers_same_topic() {
             std::thread::spawn(move || {
                 let producer = Broker::producer(&broker);
                 for i in 0..records_per_thread {
-                    let pr = ProducerRecord::new(
-                        "concurrent-topic",
-                        None,
-                        format!("t{}-r{}", t, i),
-                    );
+                    let pr =
+                        ProducerRecord::new("concurrent-topic", None, format!("t{}-r{}", t, i));
                     producer.send(&pr).unwrap();
                 }
             })
@@ -368,7 +365,11 @@ fn retention_max_records() {
 
     // Old records return None
     for i in 0..partition.min_valid_offset() {
-        assert!(partition.read(i).unwrap().is_none(), "offset {} should be gone", i);
+        assert!(
+            partition.read(i).unwrap().is_none(),
+            "offset {} should be gone",
+            i
+        );
     }
 
     // Recent records readable
@@ -403,7 +404,11 @@ fn retention_consumer_window() {
     let records = consumer.poll(Duration::from_millis(100)).unwrap();
 
     // Should get at most 5 records (the retention window)
-    assert!(records.len() <= 5, "expected at most 5, got {}", records.len());
+    assert!(
+        records.len() <= 5,
+        "expected at most 5, got {}",
+        records.len()
+    );
     assert!(!records.is_empty(), "should get at least some records");
 }
 

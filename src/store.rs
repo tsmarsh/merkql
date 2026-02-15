@@ -10,6 +10,12 @@ use std::sync::Mutex;
 /// Header size per pack entry: 4 bytes (data_length) + 32 bytes (hash).
 const ENTRY_HEADER_SIZE: u64 = 36;
 
+/// Size of one index entry: 32 (hash) + 8 (data_offset) + 4 (data_length).
+const IDX_ENTRY_SIZE: usize = 44;
+
+/// Size of the index file header: 8 bytes (pack_size as u64 LE).
+const IDX_HEADER_SIZE: usize = 8;
+
 struct PackInner {
     index: HashMap<Hash, (u64, u32)>, // hash → (data_offset, data_length)
     file: File,
@@ -26,6 +32,7 @@ struct PackInner {
 pub struct ObjectStore {
     inner: Mutex<PackInner>,
     compression: Compression,
+    idx_path: PathBuf,
 }
 
 impl ObjectStore {
@@ -41,6 +48,7 @@ impl ObjectStore {
     ) -> Result<Self> {
         let pack_path = pack_path.into();
         let legacy_dir = legacy_dir.into();
+        let idx_path = pack_path.with_extension("idx");
 
         let pack_exists = pack_path.exists();
         let legacy_exists = legacy_dir.is_dir();
@@ -56,8 +64,15 @@ impl ObjectStore {
         let mut write_pos: u64 = 0;
 
         if pack_exists {
-            // Scan existing pack file to rebuild index
-            write_pos = Self::scan_pack(&mut file, &mut index)?;
+            let pack_len = file.metadata().context("reading pack metadata")?.len();
+            // Try loading persisted index first
+            if let Some(loaded) = Self::load_index(&idx_path, pack_len)? {
+                index = loaded.0;
+                write_pos = loaded.1;
+            } else {
+                // Index missing or stale — fall back to full scan
+                write_pos = Self::scan_pack(&mut file, &mut index)?;
+            }
         }
 
         if legacy_exists && !pack_exists {
@@ -75,6 +90,7 @@ impl ObjectStore {
                 write_pos,
             }),
             compression,
+            idx_path,
         })
     }
 
@@ -149,10 +165,11 @@ impl ObjectStore {
         inner.index.contains_key(hash)
     }
 
-    /// Flush the pack file to disk.
+    /// Flush the pack file and persist the index to disk.
     pub fn flush(&self) -> Result<()> {
         let inner = self.inner.lock().unwrap();
         inner.file.sync_all().context("syncing pack file")?;
+        Self::save_index(&self.idx_path, &inner.index, inner.write_pos)?;
         Ok(())
     }
 
@@ -219,6 +236,74 @@ impl ObjectStore {
         }
 
         Ok(last_good_pos)
+    }
+
+    /// Load the persisted index file. Returns None if the file doesn't exist,
+    /// is too small, or if pack_size doesn't match the actual pack file length
+    /// (indicating a crash between pack write and index write).
+    fn load_index(
+        idx_path: &Path,
+        pack_len: u64,
+    ) -> Result<Option<(HashMap<Hash, (u64, u32)>, u64)>> {
+        let data = match fs::read(idx_path) {
+            Ok(d) => d,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e).context("reading index file"),
+        };
+
+        if data.len() < IDX_HEADER_SIZE {
+            return Ok(None);
+        }
+
+        let stored_pack_size = u64::from_le_bytes(data[..8].try_into().unwrap());
+        if stored_pack_size != pack_len {
+            // Pack file changed since index was written — stale
+            return Ok(None);
+        }
+
+        let entry_bytes = &data[IDX_HEADER_SIZE..];
+        if entry_bytes.len() % IDX_ENTRY_SIZE != 0 {
+            return Ok(None);
+        }
+
+        let n = entry_bytes.len() / IDX_ENTRY_SIZE;
+        let mut index = HashMap::with_capacity(n);
+
+        for i in 0..n {
+            let base = i * IDX_ENTRY_SIZE;
+            let mut hash_buf = [0u8; 32];
+            hash_buf.copy_from_slice(&entry_bytes[base..base + 32]);
+            let data_offset =
+                u64::from_le_bytes(entry_bytes[base + 32..base + 40].try_into().unwrap());
+            let data_len =
+                u32::from_le_bytes(entry_bytes[base + 40..base + 44].try_into().unwrap());
+            index.insert(Hash(hash_buf), (data_offset, data_len));
+        }
+
+        Ok(Some((index, stored_pack_size)))
+    }
+
+    /// Atomically write the index file (temp + fsync + rename).
+    fn save_index(
+        idx_path: &Path,
+        index: &HashMap<Hash, (u64, u32)>,
+        pack_size: u64,
+    ) -> Result<()> {
+        let tmp = idx_path.with_extension("idx.tmp");
+        let mut buf = Vec::with_capacity(IDX_HEADER_SIZE + index.len() * IDX_ENTRY_SIZE);
+
+        buf.extend_from_slice(&pack_size.to_le_bytes());
+        for (hash, &(data_offset, data_len)) in index {
+            buf.extend_from_slice(&hash.0);
+            buf.extend_from_slice(&data_offset.to_le_bytes());
+            buf.extend_from_slice(&data_len.to_le_bytes());
+        }
+
+        let mut f = File::create(&tmp).context("creating temp index file")?;
+        f.write_all(&buf).context("writing index")?;
+        f.sync_all().context("syncing index file")?;
+        fs::rename(&tmp, idx_path).context("renaming index file")?;
+        Ok(())
     }
 
     /// Migrate objects from the legacy per-file layout into the pack file.

@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Trail — merkql Examples</title>
+    <meta name="description" content="Cryptographic integrity verification with merkql: merkle proofs, root progression, proof stability, and tamper detection.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --warm-50:  #fafaf9;
+            --warm-100: #f5f5f4;
+            --warm-150: #ededeb;
+            --warm-200: #e7e5e4;
+            --warm-300: #d6d3d1;
+            --warm-400: #a8a29e;
+            --warm-500: #78716c;
+            --warm-600: #57534e;
+            --warm-700: #44403c;
+            --warm-800: #292524;
+            --warm-900: #1c1917;
+            --warm-950: #0f0e0d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--warm-50);
+            color: var(--warm-800);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: var(--warm-700); text-decoration: none; border-bottom: 1px solid var(--warm-300); padding-bottom: 1px; transition: color 0.2s, border-color 0.2s; }
+        a:hover { color: var(--warm-900); border-color: var(--warm-500); }
+
+        code, pre { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', Consolas, monospace; }
+        code { font-size: 0.85em; background: var(--warm-100); padding: 0.1em 0.3em; border-radius: 2px; }
+        pre { background: var(--warm-900); color: var(--warm-300); border-radius: 4px; padding: 20px; overflow-x: auto; font-size: 0.825rem; line-height: 1.65; }
+        pre code { background: none; padding: 0; font-size: inherit; }
+
+        .grain::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.035;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px 256px;
+        }
+        .grain-heavy::after { opacity: 0.05; }
+
+        .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+
+        .hero { position: relative; background: var(--warm-950); color: var(--warm-100); padding: 96px 24px 80px; }
+        .hero h1 { font-size: 2.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+        .hero .tagline { margin-top: 16px; font-size: 1.05rem; color: var(--warm-400); max-width: 480px; line-height: 1.6; }
+        .hero .traits { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .hero .trait { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em; color: var(--warm-400); border: 1px solid var(--warm-700); padding: 3px 10px; border-radius: 2px; }
+        .hero-links { margin-top: 32px; display: flex; gap: 24px; font-size: 0.875rem; }
+        .hero-links a { color: var(--warm-400); border-bottom: 1px solid var(--warm-700); }
+        .hero-links a:first-child { color: var(--warm-200); border-color: var(--warm-600); }
+        .hero-links a:hover { color: var(--warm-200); border-color: var(--warm-400); }
+
+        section { position: relative; padding: 80px 24px; }
+        .section-label { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--warm-400); margin-bottom: 20px; }
+        section h2 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 12px; }
+        section > .wrap > p { color: var(--warm-500); max-width: 480px; margin-bottom: 12px; }
+
+        .divider { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+        .divider hr { border: none; border-top: 1px solid var(--warm-200); }
+
+        .features { margin-top: 48px; }
+        .feature { border-left: 2px solid var(--warm-200); padding-left: 24px; margin-bottom: 32px; }
+        .feature h3 { font-size: 0.95rem; font-weight: 500; color: var(--warm-800); }
+        .feature p { margin-top: 4px; font-size: 0.875rem; color: var(--warm-500); line-height: 1.6; max-width: 480px; }
+
+        .step { margin-bottom: 40px; }
+        .step h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+        .step > p { color: var(--warm-500); font-size: 0.9rem; line-height: 1.7; max-width: 540px; margin-bottom: 16px; }
+        .step-num { display: inline-block; font-size: 0.7rem; font-weight: 600; color: var(--warm-400); background: var(--warm-100); padding: 2px 8px; border-radius: 2px; margin-bottom: 8px; letter-spacing: 0.04em; }
+        .code-label { font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: var(--warm-400); margin-bottom: 8px; margin-top: 20px; }
+
+        .output { background: var(--warm-100); border-radius: 4px; padding: 16px 20px; overflow-x: auto; font-size: 0.8rem; line-height: 1.6; color: var(--warm-600); margin-top: 12px; }
+        .output code { background: none; font-size: inherit; }
+        .output .hl { color: var(--warm-800); font-weight: 500; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 0.85rem; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--warm-150); }
+        th { font-weight: 500; font-size: 0.7rem; color: var(--warm-400); text-transform: uppercase; letter-spacing: 0.06em; }
+        td:first-child { font-weight: 500; color: var(--warm-800); }
+        td { color: var(--warm-500); }
+
+        .install { margin: 24px 0 32px; }
+        .install code { font-size: 0.95rem; background: var(--warm-900); color: var(--warm-200); padding: 8px 16px; border-radius: 4px; display: inline-block; }
+
+        .kw  { color: #d6a0a0; }
+        .fn  { color: #c4b5d0; }
+        .str { color: #b5c9d5; }
+        .cm  { color: var(--warm-600); font-style: italic; }
+        .mc  { color: #d4c5a0; }
+        .ty  { color: #a8c5a8; }
+
+        .nav-prev-next { margin-top: 48px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        .nav-prev-next a { font-size: 0.875rem; }
+
+        footer { position: relative; background: var(--warm-950); color: var(--warm-500); padding: 48px 24px; }
+        footer .wrap { display: flex; flex-direction: column; gap: 24px; }
+        @media (min-width: 640px) { footer .wrap { flex-direction: row; justify-content: space-between; align-items: baseline; } }
+        footer .name { color: var(--warm-100); font-weight: 500; }
+        footer a { color: var(--warm-500); border: none; }
+        footer a:hover { color: var(--warm-200); }
+        footer .links { display: flex; gap: 24px; font-size: 0.875rem; }
+        footer .bottom { width: 100%; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--warm-800); font-size: 0.75rem; color: var(--warm-700); }
+
+        @media (max-width: 640px) { .hero h1 { font-size: 2rem; } }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero grain grain-heavy">
+    <div class="wrap">
+        <h1>Audit trail</h1>
+        <p class="tagline">
+            Cryptographic integrity verification: merkle proofs, root progression, proof stability, and tamper detection.
+        </p>
+        <div class="traits">
+            <span class="trait">Merkle proofs</span>
+            <span class="trait">SHA-256</span>
+            <span class="trait">Verification</span>
+            <span class="trait">Root progression</span>
+            <span class="trait">Tamper detection</span>
+        </div>
+        <div class="hero-links">
+            <a href="../examples.html">All examples</a>
+            <a href="https://github.com/tailoredshapes/merkql/blob/main/examples/audit-trail/src/main.rs">Source</a>
+        </div>
+    </div>
+</div>
+
+<!-- What you'll learn -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Overview</p>
+        <h2>What this example covers</h2>
+        <p>This example focuses exclusively on merkql's integrity layer&mdash;the merkle tree that backs every partition. No consumers are used; instead, the example works directly with the partition API to generate and verify proofs.</p>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Merkle inclusion proofs</h3>
+                <p>For any record at a given offset, generate a proof consisting of the leaf hash and the sibling hashes along the path to the root. A verifier can recompute the root from the leaf and confirm it matches&mdash;proving the record is unmodified.</p>
+            </div>
+            <div class="feature">
+                <h3>Root hash progression</h3>
+                <p>The merkle root changes with every append. Capturing the root at a point in time creates a cryptographic commitment to the entire log up to that point. If any record is later modified, the root would be different.</p>
+            </div>
+            <div class="feature">
+                <h3>Proof stability</h3>
+                <p>merkql uses an append-only binary carry chain for its merkle tree. Appending new records never modifies existing tree nodes, so proofs generated earlier remain valid after growth.</p>
+            </div>
+            <div class="feature">
+                <h3>Content-addressed tamper detection</h3>
+                <p>Every object in the pack file is stored under its SHA-256 hash. If the underlying bytes are modified on disk, re-reading and re-hashing produces a different hash&mdash;an immediate integrity violation.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Walkthrough -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Walkthrough</p>
+        <h2>Step by step</h2>
+
+        <div style="margin-top: 40px;"></div>
+
+        <div class="step">
+            <span class="step-num">Steps 1&ndash;2</span>
+            <h3>Produce audit events</h3>
+            <p>Open a broker with defaults (no compression, no retention) to preserve the full history&mdash;critical for audit scenarios. Produce 50 events with structured JSON payloads containing user, action, resource, and timestamp fields.</p>
+            <pre><code><span class="kw">let</span> broker = <span class="ty">Broker</span>::<span class="fn">open</span>(<span class="ty">BrokerConfig</span>::<span class="fn">new</span>(dir.<span class="fn">path</span>())).<span class="fn">unwrap</span>();
+<span class="kw">let</span> producer = <span class="ty">Broker</span>::<span class="fn">producer</span>(&amp;broker);
+
+<span class="kw">let</span> users = [<span class="str">"alice"</span>, <span class="str">"bob"</span>, <span class="str">"charlie"</span>, <span class="str">"diana"</span>, <span class="str">"eve"</span>];
+<span class="kw">let</span> actions = [<span class="str">"CREATE"</span>, <span class="str">"READ"</span>, <span class="str">"UPDATE"</span>, <span class="str">"DELETE"</span>, <span class="str">"LOGIN"</span>];
+
+<span class="kw">for</span> i <span class="kw">in</span> 0..50 {
+    <span class="kw">let</span> event = <span class="ty">AuditEvent</span> {
+        user: users[i % users.len()].<span class="fn">to_string</span>(),
+        action: actions[i % actions.len()].<span class="fn">to_string</span>(),
+        resource: resources[(i * 3) % resources.len()].<span class="fn">to_string</span>(),
+        ts: 1700000000 + i <span class="kw">as</span> <span class="ty">u64</span>,
+    };
+    producer.<span class="fn">send</span>(&amp;<span class="ty">ProducerRecord</span>::<span class="fn">new</span>(
+        <span class="str">"audit"</span>, <span class="mc">Some</span>(event.user.<span class="fn">clone</span>()),
+        serde_json::<span class="fn">to_string</span>(&amp;event).<span class="fn">unwrap</span>(),
+    )).<span class="fn">unwrap</span>();
+}</code></pre>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 3</span>
+            <h3>Generate and verify merkle proofs</h3>
+            <p>Access the partition directly through <code>broker.topic().partition()</code>. For each of 5 sampled offsets, call <code>partition.proof(offset)</code> to generate a <code>Proof</code> struct containing the leaf hash, sibling hashes, and the root. Then verify with <code>MerkleTree::verify_proof()</code>.</p>
+            <pre><code><span class="kw">let</span> topic = broker.<span class="fn">topic</span>(<span class="str">"audit"</span>).<span class="fn">unwrap</span>();
+<span class="kw">let</span> part_arc = topic.<span class="fn">partition</span>(0).<span class="fn">unwrap</span>();
+<span class="kw">let</span> partition = part_arc.<span class="fn">read</span>().<span class="fn">unwrap</span>();
+
+<span class="kw">let</span> sample_offsets = [0, 10, 25, 37, 49];
+<span class="kw">for</span> &amp;offset <span class="kw">in</span> &amp;sample_offsets {
+    <span class="kw">let</span> proof = partition.<span class="fn">proof</span>(offset).<span class="fn">unwrap</span>().<span class="fn">unwrap</span>();
+    <span class="kw">let</span> valid = <span class="ty">MerkleTree</span>::<span class="fn">verify_proof</span>(
+        &amp;proof, partition.<span class="fn">store</span>()
+    ).<span class="fn">unwrap</span>();
+    <span class="mc">assert!</span>(valid);
+}</code></pre>
+            <p>The proof depth reflects the tree height at that offset. Offset 49 (the last leaf of 50) has depth 3 because the tree's right edge is shorter than the interior.</p>
+            <div class="output">
+                <code>
+                    Offset &nbsp;0: leaf=ed0b5b61ff5a084a...  depth=6  <span class="hl">valid=true</span><br>
+                    Offset 10: leaf=cf2a783ab91ecc1b...  depth=6  <span class="hl">valid=true</span><br>
+                    Offset 25: leaf=f0597ca3b071b2b3...  depth=6  <span class="hl">valid=true</span><br>
+                    Offset 37: leaf=75a8f5069a0171cf...  depth=6  <span class="hl">valid=true</span><br>
+                    Offset 49: leaf=7e26e538033f0c75...  depth=3  <span class="hl">valid=true</span>
+                </code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Steps 4&ndash;6</span>
+            <h3>Root hash progression</h3>
+            <p>Capture the merkle root, append 10 more events, and capture it again. The root changes because each append creates new branch nodes that propagate up to a new root.</p>
+            <pre><code><span class="kw">let</span> root_before = partition.<span class="fn">merkle_root</span>().<span class="fn">unwrap</span>().<span class="fn">unwrap</span>();
+
+<span class="cm">// Produce 10 more events...</span>
+
+<span class="kw">let</span> root_after = partition.<span class="fn">merkle_root</span>().<span class="fn">unwrap</span>().<span class="fn">unwrap</span>();
+<span class="mc">assert_ne!</span>(root_before, root_after);</code></pre>
+            <p>In practice, you would publish or escrow the root hash at regular intervals. Any future claim that &ldquo;the log contained X at time T&rdquo; can be verified against the escrowed root.</p>
+            <div class="output">
+                <code>
+                    Root before: a67c8df3b074b586...<br>
+                    Root after: &nbsp;398fdbbf5afde7fe...<br>
+                    <span class="hl">Root changed as expected.</span>
+                </code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 7</span>
+            <h3>Proof stability after appending</h3>
+            <p>The 5 proofs generated before appending are re-verified after the 10 new records are added. All still pass. This is a key property of merkql's merkle tree: new leaves are added to the right, and the existing tree nodes are immutable in the content-addressed object store.</p>
+            <pre><code><span class="kw">for</span> proof <span class="kw">in</span> &amp;earlier_proofs {
+    <span class="kw">let</span> valid = <span class="ty">MerkleTree</span>::<span class="fn">verify_proof</span>(
+        proof, partition.<span class="fn">store</span>()
+    ).<span class="fn">unwrap</span>();
+    <span class="mc">assert!</span>(valid);
+}</code></pre>
+            <p>Note: each proof was captured with the root hash at the time of generation. The proof verifies against <em>that</em> root, not the current one. Since the underlying tree nodes haven't changed, the proof remains valid even though the tree has grown.</p>
+            <div class="output">
+                <code>
+                    Proof for offset 0: still valid = <span class="hl">true</span><br>
+                    Proof for offset 10: still valid = <span class="hl">true</span><br>
+                    Proof for offset 25: still valid = <span class="hl">true</span><br>
+                    Proof for offset 37: still valid = <span class="hl">true</span><br>
+                    Proof for offset 49: still valid = <span class="hl">true</span>
+                </code>
+            </div>
+        </div>
+
+        <div class="step" style="margin-bottom: 0;">
+            <span class="step-num">Step 8</span>
+            <h3>Tamper detection</h3>
+            <p>This step demonstrates what happens when data is modified on disk. The example reads a record at offset 10, computes its SHA-256 hash, then directly corrupts the pack file by flipping bytes at the entry's storage location. When the data is re-read through the object store and re-hashed, the hash no longer matches.</p>
+            <pre><code><span class="cm">// Read the record and compute its expected hash</span>
+<span class="kw">let</span> record = partition.<span class="fn">read</span>(tamper_offset).<span class="fn">unwrap</span>().<span class="fn">unwrap</span>();
+<span class="kw">let</span> serialized = record.<span class="fn">serialize</span>();
+<span class="kw">let</span> expected_hash = <span class="ty">Hash</span>::<span class="fn">digest</span>(&amp;serialized);
+
+<span class="cm">// Corrupt the pack file on disk (flip bytes at the entry)...</span>
+<span class="fn">tamper_pack_file</span>(&amp;pack_path, &amp;expected_hash);
+
+<span class="cm">// Re-read through the store — still finds the entry by offset,</span>
+<span class="cm">// but the bytes are now different</span>
+<span class="kw">let</span> corrupted_data = partition.<span class="fn">store</span>().<span class="fn">get</span>(&amp;expected_hash).<span class="fn">unwrap</span>();
+<span class="kw">let</span> corrupted_hash = <span class="ty">Hash</span>::<span class="fn">digest</span>(&amp;corrupted_data);
+<span class="mc">assert_ne!</span>(expected_hash, corrupted_hash);</code></pre>
+            <p>The tamper function walks the pack file's entry format (<code>[4B length][32B hash][data]</code>) to find and corrupt the target entry. In production, you wouldn't need this&mdash;the hash comparison alone detects any modification.</p>
+            <div class="output">
+                <code>
+                    Record at offset 10: user=alice, action=CREATE<br>
+                    Expected hash: 36f0a3094a59beb0...<br>
+                    Tampered with pack file data for offset 10.<br>
+                    Re-read hash: &nbsp;c24733d31c33d848...<br>
+                    Integrity check: hashes match = false (<span class="hl">tamper DETECTED</span>)
+                </code>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Concepts -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Concepts</p>
+        <h2>How the merkle tree works</h2>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Binary carry chain</h3>
+                <p>merkql uses an incremental binary carry chain (similar to binary addition) for tree construction. When two entries at the same height exist, they merge into a branch one level up. This makes appends O(log n) and avoids rebuilding the tree from scratch.</p>
+            </div>
+            <div class="feature">
+                <h3>Content-addressed storage</h3>
+                <p>Every object&mdash;records, leaf nodes, branch nodes&mdash;is stored in a pack file keyed by its SHA-256 hash. This means identical content is never stored twice, and any modification to stored bytes is detectable by re-hashing.</p>
+            </div>
+            <div class="feature">
+                <h3>Proof structure</h3>
+                <p>A <code>Proof</code> contains the leaf hash (the record's hash), a list of sibling hashes with their side (Left or Right), and the root hash. Verification walks from leaf to root, hashing pairs at each level.</p>
+            </div>
+            <div class="feature">
+                <h3>Tree snapshots</h3>
+                <p>The tree's state (pending entries and count) is persisted to <code>tree.snapshot</code> after every write using atomic temp+fsync+rename. On reopen, the tree resumes without replaying the log.</p>
+            </div>
+            <div class="feature" style="margin-bottom: 0;">
+                <h3>Regulatory compliance</h3>
+                <p>For SOX, HIPAA, PCI-DSS, or GDPR audit requirements: periodically capture and escrow the merkle root, then hand auditors individual proofs. They can independently verify any record's inclusion without access to the full dataset.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- API Reference -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Reference</p>
+        <h2>APIs used</h2>
+
+        <table>
+            <thead><tr><th>API</th><th>Purpose</th></tr></thead>
+            <tbody>
+                <tr><td><code>broker.topic(name)</code></td><td>Get a topic by name</td></tr>
+                <tr><td><code>topic.partition(id)</code></td><td>Get a partition (returns <code>Arc&lt;RwLock&gt;</code>)</td></tr>
+                <tr><td><code>partition.proof(offset)</code></td><td>Generate a merkle inclusion proof</td></tr>
+                <tr><td><code>MerkleTree::verify_proof()</code></td><td>Verify a proof against the object store</td></tr>
+                <tr><td><code>partition.merkle_root()</code></td><td>Get the current root hash</td></tr>
+                <tr><td><code>partition.read(offset)</code></td><td>Read a single record by offset</td></tr>
+                <tr><td><code>partition.store()</code></td><td>Access the content-addressed pack file store</td></tr>
+                <tr><td><code>store.get(hash)</code></td><td>Retrieve object bytes by SHA-256 hash</td></tr>
+                <tr><td><code>Hash::digest(data)</code></td><td>Compute SHA-256 hash</td></tr>
+                <tr><td><code>hash.to_hex()</code></td><td>Convert hash to hex string for display</td></tr>
+                <tr><td><code>record.serialize()</code></td><td>Serialize record to bytes (for hashing)</td></tr>
+            </tbody>
+        </table>
+
+        <div class="install">
+            <code>cargo run -p merkql-audit-trail</code>
+        </div>
+
+        <div class="nav-prev-next">
+            <a href="sensor-pipeline.html">&larr; Previous: Sensor pipeline</a>
+            <a href="event-sourced-cart.html">Next: Event-sourced cart &rarr;</a>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="grain grain-heavy">
+    <div class="wrap">
+        <div>
+            <p class="name">merkql</p>
+            <p style="font-size: 0.875rem; margin-top: 4px;">A <a href="https://tailoredshapes.github.io">TailoredShapes</a> project</p>
+        </div>
+        <div class="links">
+            <a href="../index.html">Home</a>
+            <a href="../examples.html">Examples</a>
+            <a href="https://github.com/tailoredshapes/merkql">GitHub</a>
+        </div>
+        <div class="bottom">
+            <p>&copy; 2025 TailoredShapes &middot; MIT License</p>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Event-Sourced Cart — merkql Examples</title>
+    <meta name="description" content="Event sourcing and CQRS with merkql: domain events, multiple projections from the same stream, and incremental updates.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --warm-50:  #fafaf9;
+            --warm-100: #f5f5f4;
+            --warm-150: #ededeb;
+            --warm-200: #e7e5e4;
+            --warm-300: #d6d3d1;
+            --warm-400: #a8a29e;
+            --warm-500: #78716c;
+            --warm-600: #57534e;
+            --warm-700: #44403c;
+            --warm-800: #292524;
+            --warm-900: #1c1917;
+            --warm-950: #0f0e0d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--warm-50);
+            color: var(--warm-800);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: var(--warm-700); text-decoration: none; border-bottom: 1px solid var(--warm-300); padding-bottom: 1px; transition: color 0.2s, border-color 0.2s; }
+        a:hover { color: var(--warm-900); border-color: var(--warm-500); }
+
+        code, pre { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', Consolas, monospace; }
+        code { font-size: 0.85em; background: var(--warm-100); padding: 0.1em 0.3em; border-radius: 2px; }
+        pre { background: var(--warm-900); color: var(--warm-300); border-radius: 4px; padding: 20px; overflow-x: auto; font-size: 0.825rem; line-height: 1.65; }
+        pre code { background: none; padding: 0; font-size: inherit; }
+
+        .grain::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.035;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px 256px;
+        }
+        .grain-heavy::after { opacity: 0.05; }
+
+        .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+
+        .hero { position: relative; background: var(--warm-950); color: var(--warm-100); padding: 96px 24px 80px; }
+        .hero h1 { font-size: 2.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+        .hero .tagline { margin-top: 16px; font-size: 1.05rem; color: var(--warm-400); max-width: 480px; line-height: 1.6; }
+        .hero .traits { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .hero .trait { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em; color: var(--warm-400); border: 1px solid var(--warm-700); padding: 3px 10px; border-radius: 2px; }
+        .hero-links { margin-top: 32px; display: flex; gap: 24px; font-size: 0.875rem; }
+        .hero-links a { color: var(--warm-400); border-bottom: 1px solid var(--warm-700); }
+        .hero-links a:first-child { color: var(--warm-200); border-color: var(--warm-600); }
+        .hero-links a:hover { color: var(--warm-200); border-color: var(--warm-400); }
+
+        section { position: relative; padding: 80px 24px; }
+        .section-label { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--warm-400); margin-bottom: 20px; }
+        section h2 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 12px; }
+        section > .wrap > p { color: var(--warm-500); max-width: 480px; margin-bottom: 12px; }
+
+        .divider { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+        .divider hr { border: none; border-top: 1px solid var(--warm-200); }
+
+        .features { margin-top: 48px; }
+        .feature { border-left: 2px solid var(--warm-200); padding-left: 24px; margin-bottom: 32px; }
+        .feature h3 { font-size: 0.95rem; font-weight: 500; color: var(--warm-800); }
+        .feature p { margin-top: 4px; font-size: 0.875rem; color: var(--warm-500); line-height: 1.6; max-width: 480px; }
+
+        .step { margin-bottom: 40px; }
+        .step h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+        .step > p { color: var(--warm-500); font-size: 0.9rem; line-height: 1.7; max-width: 540px; margin-bottom: 16px; }
+        .step-num { display: inline-block; font-size: 0.7rem; font-weight: 600; color: var(--warm-400); background: var(--warm-100); padding: 2px 8px; border-radius: 2px; margin-bottom: 8px; letter-spacing: 0.04em; }
+        .code-label { font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: var(--warm-400); margin-bottom: 8px; margin-top: 20px; }
+
+        .output { background: var(--warm-100); border-radius: 4px; padding: 16px 20px; overflow-x: auto; font-size: 0.8rem; line-height: 1.6; color: var(--warm-600); margin-top: 12px; }
+        .output code { background: none; font-size: inherit; }
+        .output .hl { color: var(--warm-800); font-weight: 500; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 0.85rem; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--warm-150); }
+        th { font-weight: 500; font-size: 0.7rem; color: var(--warm-400); text-transform: uppercase; letter-spacing: 0.06em; }
+        td:first-child { font-weight: 500; color: var(--warm-800); }
+        td { color: var(--warm-500); }
+
+        .install { margin: 24px 0 32px; }
+        .install code { font-size: 0.95rem; background: var(--warm-900); color: var(--warm-200); padding: 8px 16px; border-radius: 4px; display: inline-block; }
+
+        .kw  { color: #d6a0a0; }
+        .fn  { color: #c4b5d0; }
+        .str { color: #b5c9d5; }
+        .cm  { color: var(--warm-600); font-style: italic; }
+        .mc  { color: #d4c5a0; }
+        .ty  { color: #a8c5a8; }
+
+        .nav-prev-next { margin-top: 48px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        .nav-prev-next a { font-size: 0.875rem; }
+        .nav-prev-next .disabled { color: var(--warm-300); border: none; cursor: default; }
+
+        footer { position: relative; background: var(--warm-950); color: var(--warm-500); padding: 48px 24px; }
+        footer .wrap { display: flex; flex-direction: column; gap: 24px; }
+        @media (min-width: 640px) { footer .wrap { flex-direction: row; justify-content: space-between; align-items: baseline; } }
+        footer .name { color: var(--warm-100); font-weight: 500; }
+        footer a { color: var(--warm-500); border: none; }
+        footer a:hover { color: var(--warm-200); }
+        footer .links { display: flex; gap: 24px; font-size: 0.875rem; }
+        footer .bottom { width: 100%; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--warm-800); font-size: 0.75rem; color: var(--warm-700); }
+
+        @media (max-width: 640px) { .hero h1 { font-size: 2rem; } }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero grain grain-heavy">
+    <div class="wrap">
+        <h1>Event-sourced cart</h1>
+        <p class="tagline">
+            Event sourcing and CQRS: domain events, multiple projections from the same stream, and incremental updates without full replay.
+        </p>
+        <div class="traits">
+            <span class="trait">Event sourcing</span>
+            <span class="trait">CQRS</span>
+            <span class="trait">Projections</span>
+            <span class="trait">Keyed records</span>
+            <span class="trait">Incremental</span>
+        </div>
+        <div class="hero-links">
+            <a href="../examples.html">All examples</a>
+            <a href="https://github.com/tailoredshapes/merkql/blob/main/examples/event-sourced-cart/src/main.rs">Source</a>
+        </div>
+    </div>
+</div>
+
+<!-- What you'll learn -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Overview</p>
+        <h2>What this example covers</h2>
+        <p>This example implements a classic event sourcing and CQRS architecture using merkql as the event store. Domain events for a shopping cart are appended to a topic, then multiple consumer groups independently replay and project different views of the same data.</p>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Domain event modelling</h3>
+                <p>Cart events (<code>AddItem</code>, <code>RemoveItem</code>, <code>Checkout</code>) are modelled as a tagged enum and serialized to JSON. The <code>serde(tag = "type")</code> attribute produces discriminated unions in the JSON output.</p>
+            </div>
+            <div class="feature">
+                <h3>Entity-keyed records</h3>
+                <p>Each event uses the cart ID as the record key. This routes all events for the same cart to the same partition, preserving per-cart ordering without requiring global ordering across carts.</p>
+            </div>
+            <div class="feature">
+                <h3>CQRS with multiple projections</h3>
+                <p>Two consumer groups read the same event stream independently. &ldquo;cart-state&rdquo; materializes the current contents of each cart. &ldquo;revenue&rdquo; tracks which carts have checked out and sums their totals. Same data, different views.</p>
+            </div>
+            <div class="feature">
+                <h3>Incremental updates</h3>
+                <p>After initial replay, both consumers commit their offsets. When new events arrive, each consumer polls and receives only the new events&mdash;no full replay needed. This is the production pattern for maintaining live projections.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Walkthrough -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Walkthrough</p>
+        <h2>Step by step</h2>
+
+        <div style="margin-top: 40px;"></div>
+
+        <div class="step">
+            <span class="step-num">Step 1</span>
+            <h3>Define event types</h3>
+            <p>Cart events are modelled as a Rust enum with <code>#[serde(tag = "type")]</code> for tagged JSON serialization. Each variant carries a <code>cart_id</code> used as the record key. A helper method extracts the cart ID regardless of variant.</p>
+            <pre><code><span class="kw">#[derive(Serialize, Deserialize)]</span>
+<span class="kw">#[serde(tag = </span><span class="str">"type"</span><span class="kw">)]</span>
+<span class="kw">enum</span> <span class="ty">CartEvent</span> {
+    AddItem {
+        cart_id: <span class="ty">String</span>,
+        item: <span class="ty">String</span>,
+        qty: <span class="ty">u32</span>,
+        price: <span class="ty">f64</span>,
+    },
+    RemoveItem {
+        cart_id: <span class="ty">String</span>,
+        item: <span class="ty">String</span>,
+    },
+    Checkout {
+        cart_id: <span class="ty">String</span>,
+    },
+}
+
+<span class="kw">impl</span> <span class="ty">CartEvent</span> {
+    <span class="kw">fn</span> <span class="fn">cart_id</span>(&amp;<span class="kw">self</span>) -&gt; &amp;<span class="ty">str</span> {
+        <span class="kw">match</span> <span class="kw">self</span> {
+            <span class="ty">CartEvent</span>::AddItem { cart_id, .. } =&gt; cart_id,
+            <span class="ty">CartEvent</span>::RemoveItem { cart_id, .. } =&gt; cart_id,
+            <span class="ty">CartEvent</span>::Checkout { cart_id, .. } =&gt; cart_id,
+        }
+    }
+}</code></pre>
+            <p>An <code>AddItem</code> event serializes to JSON like:</p>
+            <div class="output">
+                <code>{"type":"AddItem","cart_id":"cart-1","item":"Widget","qty":2,"price":9.99}</code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Steps 2&ndash;3</span>
+            <h3>Produce cart events</h3>
+            <p>30 events are produced across 3 carts. Carts 1 and 2 go through a full lifecycle: add items, remove some, checkout. Cart 3 has items added but hasn't checked out yet. The cart ID is used as the record key.</p>
+            <pre><code><span class="kw">let</span> producer = <span class="ty">Broker</span>::<span class="fn">producer</span>(&amp;broker);
+
+<span class="kw">let</span> events: <span class="ty">Vec</span>&lt;<span class="ty">CartEvent</span>&gt; = <span class="kw">vec!</span>[
+    <span class="cm">// Cart 1: add items, remove one, checkout</span>
+    <span class="ty">CartEvent</span>::AddItem { cart_id: <span class="str">"cart-1"</span>.<span class="fn">into</span>(),
+        item: <span class="str">"Widget"</span>.<span class="fn">into</span>(), qty: 2, price: 9.99 },
+    <span class="ty">CartEvent</span>::AddItem { cart_id: <span class="str">"cart-1"</span>.<span class="fn">into</span>(),
+        item: <span class="str">"Gadget"</span>.<span class="fn">into</span>(), qty: 1, price: 24.99 },
+    <span class="cm">// ... more events ...</span>
+    <span class="ty">CartEvent</span>::Checkout { cart_id: <span class="str">"cart-1"</span>.<span class="fn">into</span>() },
+    <span class="cm">// Cart 2: similar lifecycle</span>
+    <span class="cm">// Cart 3: items added, no checkout</span>
+];
+
+<span class="kw">for</span> event <span class="kw">in</span> &amp;events {
+    <span class="kw">let</span> value = serde_json::<span class="fn">to_string</span>(event).<span class="fn">unwrap</span>();
+    producer.<span class="fn">send</span>(&amp;<span class="ty">ProducerRecord</span>::<span class="fn">new</span>(
+        <span class="str">"cart-events"</span>,
+        <span class="mc">Some</span>(event.<span class="fn">cart_id</span>().<span class="fn">to_string</span>()),
+        value,
+    )).<span class="fn">unwrap</span>();
+}</code></pre>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 4</span>
+            <h3>Projection 1 &mdash; Cart state</h3>
+            <p>The &ldquo;cart-state&rdquo; consumer group replays all 30 events and builds a <code>HashMap&lt;cart_id, Vec&lt;LineItem&gt;&gt;</code>. The <code>apply_cart_event</code> function handles each variant: <code>AddItem</code> inserts or updates quantities, <code>RemoveItem</code> drops the item, <code>Checkout</code> is a no-op for this projection.</p>
+            <pre><code><span class="kw">let mut</span> cart_state: <span class="ty">HashMap</span>&lt;<span class="ty">String</span>, <span class="ty">Vec</span>&lt;<span class="ty">LineItem</span>&gt;&gt; = <span class="ty">HashMap</span>::<span class="fn">new</span>();
+
+<span class="kw">let mut</span> consumer = <span class="ty">Broker</span>::<span class="fn">consumer</span>(&amp;broker, <span class="ty">ConsumerConfig</span> {
+    group_id: <span class="str">"cart-state"</span>.<span class="fn">into</span>(),
+    auto_commit: <span class="kw">false</span>,
+    offset_reset: <span class="ty">OffsetReset</span>::Earliest,
+});
+consumer.<span class="fn">subscribe</span>(&amp;[<span class="str">"cart-events"</span>]).<span class="fn">unwrap</span>();
+<span class="kw">let</span> records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+
+<span class="kw">for</span> record <span class="kw">in</span> &amp;records {
+    <span class="kw">let</span> event: <span class="ty">CartEvent</span> = serde_json::<span class="fn">from_str</span>(&amp;record.value).<span class="fn">unwrap</span>();
+    <span class="fn">apply_cart_event</span>(&amp;<span class="kw">mut</span> cart_state, &amp;event);
+}
+consumer.<span class="fn">commit_sync</span>().<span class="fn">unwrap</span>();</code></pre>
+            <div class="output">
+                <code>
+                    Polled <span class="hl">30 records</span>.<br>
+                    <span class="hl">cart-1: 7 items, total $125.43</span><br>
+                    &nbsp;&nbsp;Widget x3 @ $9.99 = $29.97<br>
+                    &nbsp;&nbsp;Gadget x1 @ $24.99 = $24.99<br>
+                    &nbsp;&nbsp;Thingamajig x1 @ $15.00 = $15.00<br>
+                    &nbsp;&nbsp;Gizmo x2 @ $7.50 = $15.00<br>
+                    &nbsp;&nbsp;Doodad x3 @ $5.99 = $17.97<br>
+                    &nbsp;&nbsp;Spring x4 @ $2.25 = $9.00<br>
+                    &nbsp;&nbsp;Lever x1 @ $13.50 = $13.50<br>
+                    <span class="hl">cart-2: 6 items, total $141.25</span><br>
+                    <span class="hl">cart-3: 6 items, total $49.50</span>
+                </code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 5</span>
+            <h3>Projection 2 &mdash; Revenue report</h3>
+            <p>A second consumer group (&ldquo;revenue&rdquo;) reads the same 30 events but builds a different view. It tracks which carts have checked out and only counts their line item totals toward revenue. Cart 3 hasn't checked out, so it's excluded from the total.</p>
+            <pre><code><span class="kw">let mut</span> checked_out: <span class="ty">HashMap</span>&lt;<span class="ty">String</span>, <span class="ty">bool</span>&gt; = <span class="ty">HashMap</span>::<span class="fn">new</span>();
+<span class="kw">let mut</span> revenue_items: <span class="ty">HashMap</span>&lt;<span class="ty">String</span>, <span class="ty">Vec</span>&lt;<span class="ty">LineItem</span>&gt;&gt; = <span class="ty">HashMap</span>::<span class="fn">new</span>();
+
+<span class="kw">let mut</span> consumer = <span class="ty">Broker</span>::<span class="fn">consumer</span>(&amp;broker, <span class="ty">ConsumerConfig</span> {
+    group_id: <span class="str">"revenue"</span>.<span class="fn">into</span>(),
+    auto_commit: <span class="kw">false</span>,
+    offset_reset: <span class="ty">OffsetReset</span>::Earliest,
+});
+consumer.<span class="fn">subscribe</span>(&amp;[<span class="str">"cart-events"</span>]).<span class="fn">unwrap</span>();
+<span class="kw">let</span> records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+
+<span class="kw">for</span> record <span class="kw">in</span> &amp;records {
+    <span class="kw">let</span> event: <span class="ty">CartEvent</span> = serde_json::<span class="fn">from_str</span>(&amp;record.value).<span class="fn">unwrap</span>();
+    <span class="kw">match</span> &amp;event {
+        <span class="ty">CartEvent</span>::Checkout { cart_id } =&gt; {
+            checked_out.<span class="fn">insert</span>(cart_id.<span class="fn">clone</span>(), <span class="kw">true</span>);
+        }
+        _ =&gt; <span class="fn">apply_cart_event</span>(&amp;<span class="kw">mut</span> revenue_items, &amp;event),
+    }
+}
+consumer.<span class="fn">commit_sync</span>().<span class="fn">unwrap</span>();</code></pre>
+            <div class="output">
+                <code>
+                    cart-1 (checked out): $125.43<br>
+                    cart-2 (checked out): $141.25<br>
+                    <span class="hl">Total revenue: $266.68</span>
+                </code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 6</span>
+            <h3>Produce incremental events</h3>
+            <p>5 more events complete cart-3: add two new items, remove one existing item, add another, and finally checkout. These events are appended to the same topic.</p>
+            <pre><code><span class="kw">let</span> new_events = <span class="kw">vec!</span>[
+    <span class="ty">CartEvent</span>::AddItem { cart_id: <span class="str">"cart-3"</span>.<span class="fn">into</span>(),
+        item: <span class="str">"Clamp"</span>.<span class="fn">into</span>(), qty: 5, price: 2.50 },
+    <span class="ty">CartEvent</span>::AddItem { cart_id: <span class="str">"cart-3"</span>.<span class="fn">into</span>(),
+        item: <span class="str">"Hinge"</span>.<span class="fn">into</span>(), qty: 8, price: 1.75 },
+    <span class="ty">CartEvent</span>::RemoveItem { cart_id: <span class="str">"cart-3"</span>.<span class="fn">into</span>(),
+        item: <span class="str">"Anchor"</span>.<span class="fn">into</span>() },
+    <span class="ty">CartEvent</span>::AddItem { cart_id: <span class="str">"cart-3"</span>.<span class="fn">into</span>(),
+        item: <span class="str">"Latch"</span>.<span class="fn">into</span>(), qty: 3, price: 4.00 },
+    <span class="ty">CartEvent</span>::Checkout { cart_id: <span class="str">"cart-3"</span>.<span class="fn">into</span>() },
+];</code></pre>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 7</span>
+            <h3>Incremental projection updates</h3>
+            <p>Both consumer groups poll again. Because they committed their offsets after step 4/5, they each receive exactly the 5 new events&mdash;not the full 35. Each projection incrementally updates its view without replaying the entire history.</p>
+            <pre><code><span class="cm">// Cart state consumer picks up from offset 30</span>
+<span class="kw">let</span> records = cart_consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+<span class="mc">assert_eq!</span>(records.<span class="fn">len</span>(), 5);
+<span class="kw">for</span> record <span class="kw">in</span> &amp;records {
+    <span class="kw">let</span> event: <span class="ty">CartEvent</span> = serde_json::<span class="fn">from_str</span>(&amp;record.value).<span class="fn">unwrap</span>();
+    <span class="fn">apply_cart_event</span>(&amp;<span class="kw">mut</span> cart_state, &amp;event);
+}
+
+<span class="cm">// Revenue consumer also picks up from offset 30</span>
+<span class="kw">let</span> records = revenue_consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+<span class="mc">assert_eq!</span>(records.<span class="fn">len</span>(), 5);</code></pre>
+            <div class="output">
+                <code>
+                    Cart state consumer: Polled <span class="hl">5 new records</span> (expected 5).<br>
+                    Revenue consumer: &nbsp;&nbsp;Polled <span class="hl">5 new records</span> (expected 5).
+                </code>
+            </div>
+        </div>
+
+        <div class="step" style="margin-bottom: 0;">
+            <span class="step-num">Step 8</span>
+            <h3>Updated projections</h3>
+            <p>After processing the 5 new events, both projections reflect the updated state. Cart-3 now has 8 items totalling $76.00 (with Anchor removed, Clamp/Hinge/Latch added), and the revenue report now includes cart-3 since it checked out.</p>
+            <div class="output">
+                <code>
+                    <span class="hl">Updated cart state:</span><br>
+                    cart-1: 7 items, total $125.43<br>
+                    cart-2: 6 items, total $141.25<br>
+                    cart-3: 8 items, total $76.00<br>
+                    &nbsp;&nbsp;Bolt x100 @ $0.10 = $10.00<br>
+                    &nbsp;&nbsp;Nut x100 @ $0.08 = $8.00<br>
+                    &nbsp;&nbsp;Rivet x200 @ $0.03 = $6.00<br>
+                    &nbsp;&nbsp;Pin x50 @ $0.15 = $7.50<br>
+                    &nbsp;&nbsp;Screw x150 @ $0.04 = $6.00<br>
+                    &nbsp;&nbsp;Clamp x5 @ $2.50 = $12.50<br>
+                    &nbsp;&nbsp;Hinge x8 @ $1.75 = $14.00<br>
+                    &nbsp;&nbsp;Latch x3 @ $4.00 = $12.00<br><br>
+                    <span class="hl">Updated revenue:</span><br>
+                    cart-1 (checked out): $125.43<br>
+                    cart-2 (checked out): $141.25<br>
+                    cart-3 (checked out): $76.00<br>
+                    <span class="hl">Total revenue: $342.68</span>
+                </code>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Concepts -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Concepts</p>
+        <h2>Event sourcing with merkql</h2>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Events as the source of truth</h3>
+                <p>Instead of storing the current state of each cart, this pattern stores the sequence of events that produced that state. The current state is derived by replaying events. This gives you a complete audit trail and the ability to build new views from historical data.</p>
+            </div>
+            <div class="feature">
+                <h3>CQRS: Command Query Responsibility Segregation</h3>
+                <p>The write side (producer) appends events to the log. The read side (consumers) builds materialized views. Each consumer group maintains its own read model optimised for its specific query pattern. Writing events and reading projections are completely decoupled.</p>
+            </div>
+            <div class="feature">
+                <h3>Consumer groups as projection builders</h3>
+                <p>merkql's consumer group model maps naturally to CQRS projections. Each group has independent offset tracking, so you can add a new projection at any time&mdash;it replays from the beginning while existing projections continue incrementally.</p>
+            </div>
+            <div class="feature">
+                <h3>Event replay vs incremental update</h3>
+                <p>On first startup, a projection replays the entire event stream (offset reset = Earliest). On subsequent runs, it resumes from its committed offset and processes only new events. This is the same pattern used in production event-sourced systems with Kafka.</p>
+            </div>
+            <div class="feature" style="margin-bottom: 0;">
+                <h3>Keyed records for entity ordering</h3>
+                <p>Using the cart ID as the record key ensures all events for the same cart are ordered within a partition. With multiple partitions, different carts can be processed in parallel while maintaining per-cart consistency.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- API Reference -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Reference</p>
+        <h2>APIs used</h2>
+
+        <table>
+            <thead><tr><th>API</th><th>Purpose</th></tr></thead>
+            <tbody>
+                <tr><td><code>ProducerRecord::new()</code></td><td>Keyed records (cart_id routes to partition)</td></tr>
+                <tr><td><code>producer.send()</code></td><td>Append domain events to the log</td></tr>
+                <tr><td><code>ConsumerConfig.group_id</code></td><td>Independent consumer group per projection</td></tr>
+                <tr><td><code>OffsetReset::Earliest</code></td><td>Replay from beginning on first run</td></tr>
+                <tr><td><code>consumer.subscribe()</code></td><td>Subscribe to the event topic</td></tr>
+                <tr><td><code>consumer.poll()</code></td><td>Fetch events from current position</td></tr>
+                <tr><td><code>consumer.commit_sync()</code></td><td>Persist position for incremental updates</td></tr>
+                <tr><td><code>consumer.close()</code></td><td>Clean shutdown of consumer</td></tr>
+            </tbody>
+        </table>
+
+        <div class="install">
+            <code>cargo run -p merkql-event-sourced-cart</code>
+        </div>
+
+        <div class="nav-prev-next">
+            <a href="audit-trail.html">&larr; Previous: Audit trail</a>
+            <span class="disabled">Next &rarr;</span>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="grain grain-heavy">
+    <div class="wrap">
+        <div>
+            <p class="name">merkql</p>
+            <p style="font-size: 0.875rem; margin-top: 4px;">A <a href="https://tailoredshapes.github.io">TailoredShapes</a> project</p>
+        </div>
+        <div class="links">
+            <a href="../index.html">Home</a>
+            <a href="../examples.html">Examples</a>
+            <a href="https://github.com/tailoredshapes/merkql">GitHub</a>
+        </div>
+        <div class="bottom">
+            <p>&copy; 2025 TailoredShapes &middot; MIT License</p>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>

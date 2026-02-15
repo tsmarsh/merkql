@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Pipeline — merkql Examples</title>
+    <meta name="description" content="A complete IoT data pipeline example: produce, consume, batch, compress, retain, and survive broker restarts with merkql.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --warm-50:  #fafaf9;
+            --warm-100: #f5f5f4;
+            --warm-150: #ededeb;
+            --warm-200: #e7e5e4;
+            --warm-300: #d6d3d1;
+            --warm-400: #a8a29e;
+            --warm-500: #78716c;
+            --warm-600: #57534e;
+            --warm-700: #44403c;
+            --warm-800: #292524;
+            --warm-900: #1c1917;
+            --warm-950: #0f0e0d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--warm-50);
+            color: var(--warm-800);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: var(--warm-700); text-decoration: none; border-bottom: 1px solid var(--warm-300); padding-bottom: 1px; transition: color 0.2s, border-color 0.2s; }
+        a:hover { color: var(--warm-900); border-color: var(--warm-500); }
+
+        code, pre { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', Consolas, monospace; }
+        code { font-size: 0.85em; background: var(--warm-100); padding: 0.1em 0.3em; border-radius: 2px; }
+        pre { background: var(--warm-900); color: var(--warm-300); border-radius: 4px; padding: 20px; overflow-x: auto; font-size: 0.825rem; line-height: 1.65; }
+        pre code { background: none; padding: 0; font-size: inherit; }
+
+        .grain::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.035;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px 256px;
+        }
+        .grain-heavy::after { opacity: 0.05; }
+
+        .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+
+        .hero { position: relative; background: var(--warm-950); color: var(--warm-100); padding: 96px 24px 80px; }
+        .hero h1 { font-size: 2.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+        .hero .tagline { margin-top: 16px; font-size: 1.05rem; color: var(--warm-400); max-width: 480px; line-height: 1.6; }
+        .hero .traits { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .hero .trait { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em; color: var(--warm-400); border: 1px solid var(--warm-700); padding: 3px 10px; border-radius: 2px; }
+        .hero-links { margin-top: 32px; display: flex; gap: 24px; font-size: 0.875rem; }
+        .hero-links a { color: var(--warm-400); border-bottom: 1px solid var(--warm-700); }
+        .hero-links a:first-child { color: var(--warm-200); border-color: var(--warm-600); }
+        .hero-links a:hover { color: var(--warm-200); border-color: var(--warm-400); }
+
+        section { position: relative; padding: 80px 24px; }
+        .section-label { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--warm-400); margin-bottom: 20px; }
+        section h2 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 12px; }
+        section > .wrap > p { color: var(--warm-500); max-width: 480px; margin-bottom: 12px; }
+
+        .divider { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+        .divider hr { border: none; border-top: 1px solid var(--warm-200); }
+
+        .features { margin-top: 48px; }
+        .feature { border-left: 2px solid var(--warm-200); padding-left: 24px; margin-bottom: 32px; }
+        .feature h3 { font-size: 0.95rem; font-weight: 500; color: var(--warm-800); }
+        .feature p { margin-top: 4px; font-size: 0.875rem; color: var(--warm-500); line-height: 1.6; max-width: 480px; }
+
+        .step { margin-bottom: 40px; }
+        .step h3 { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+        .step > p { color: var(--warm-500); font-size: 0.9rem; line-height: 1.7; max-width: 540px; margin-bottom: 16px; }
+        .step-num { display: inline-block; font-size: 0.7rem; font-weight: 600; color: var(--warm-400); background: var(--warm-100); padding: 2px 8px; border-radius: 2px; margin-bottom: 8px; letter-spacing: 0.04em; }
+        .code-label { font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; color: var(--warm-400); margin-bottom: 8px; margin-top: 20px; }
+
+        .output { background: var(--warm-100); border-radius: 4px; padding: 16px 20px; overflow-x: auto; font-size: 0.8rem; line-height: 1.6; color: var(--warm-600); margin-top: 12px; }
+        .output code { background: none; font-size: inherit; }
+        .output .hl { color: var(--warm-800); font-weight: 500; }
+
+        table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 0.85rem; }
+        th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--warm-150); }
+        th { font-weight: 500; font-size: 0.7rem; color: var(--warm-400); text-transform: uppercase; letter-spacing: 0.06em; }
+        td:first-child { font-weight: 500; color: var(--warm-800); }
+        td { color: var(--warm-500); }
+
+        .install { margin: 24px 0 32px; }
+        .install code { font-size: 0.95rem; background: var(--warm-900); color: var(--warm-200); padding: 8px 16px; border-radius: 4px; display: inline-block; }
+
+        .kw  { color: #d6a0a0; }
+        .fn  { color: #c4b5d0; }
+        .str { color: #b5c9d5; }
+        .cm  { color: var(--warm-600); font-style: italic; }
+        .mc  { color: #d4c5a0; }
+        .ty  { color: #a8c5a8; }
+
+        .nav-prev-next { margin-top: 48px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        .nav-prev-next a { font-size: 0.875rem; }
+        .nav-prev-next .disabled { color: var(--warm-300); border: none; cursor: default; }
+
+        footer { position: relative; background: var(--warm-950); color: var(--warm-500); padding: 48px 24px; }
+        footer .wrap { display: flex; flex-direction: column; gap: 24px; }
+        @media (min-width: 640px) { footer .wrap { flex-direction: row; justify-content: space-between; align-items: baseline; } }
+        footer .name { color: var(--warm-100); font-weight: 500; }
+        footer a { color: var(--warm-500); border: none; }
+        footer a:hover { color: var(--warm-200); }
+        footer .links { display: flex; gap: 24px; font-size: 0.875rem; }
+        footer .bottom { width: 100%; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--warm-800); font-size: 0.75rem; color: var(--warm-700); }
+
+        @media (max-width: 640px) { .hero h1 { font-size: 2rem; } }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero grain grain-heavy">
+    <div class="wrap">
+        <h1>Sensor pipeline</h1>
+        <p class="tagline">
+            A complete IoT data pipeline: produce, consume, batch, compress, retain, and survive broker restarts.
+        </p>
+        <div class="traits">
+            <span class="trait">Producer</span>
+            <span class="trait">send_batch</span>
+            <span class="trait">Consumer groups</span>
+            <span class="trait">LZ4</span>
+            <span class="trait">Retention</span>
+            <span class="trait">Restart</span>
+        </div>
+        <div class="hero-links">
+            <a href="../examples.html">All examples</a>
+            <a href="https://github.com/tailoredshapes/merkql/blob/main/examples/sensor-pipeline/src/main.rs">Source</a>
+        </div>
+    </div>
+</div>
+
+<!-- What you'll learn -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Overview</p>
+        <h2>What this example covers</h2>
+        <p>This example exercises the core produce/consume lifecycle through a realistic IoT scenario: 4 temperature sensors streaming readings into a single topic.</p>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Keyed records</h3>
+                <p>Each sensor reading uses the sensor ID as the record key. Keys determine partition routing&mdash;all readings from the same sensor land in the same partition, preserving per-sensor ordering.</p>
+            </div>
+            <div class="feature">
+                <h3>Individual and batch production</h3>
+                <p>200 records sent one at a time via <code>producer.send()</code>, then 800 more via <code>producer.send_batch()</code>. Batch sends amortise fsync overhead&mdash;one flush per batch instead of one per record.</p>
+            </div>
+            <div class="feature">
+                <h3>Multiple consumer groups</h3>
+                <p>Two consumer groups (&ldquo;analytics&rdquo; and &ldquo;alerts&rdquo;) read the same topic independently, each maintaining its own offset position. One group's progress never affects the other.</p>
+            </div>
+            <div class="feature">
+                <h3>LZ4 compression</h3>
+                <p>The broker is opened with <code>Compression::Lz4</code>. All records are compressed before storage and transparently decompressed on read. Hashes are computed on uncompressed data, so merkle proofs remain valid regardless of compression.</p>
+            </div>
+            <div class="feature">
+                <h3>Retention policy</h3>
+                <p>Configured with <code>max_records: Some(500)</code>. After 1,000 records are produced, consumers starting from <code>OffsetReset::Earliest</code> only see the most recent 500.</p>
+            </div>
+            <div class="feature">
+                <h3>Restart persistence</h3>
+                <p>The broker is dropped and reopened from the same directory. Committed consumer group offsets survive the restart&mdash;no duplicate delivery.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Walkthrough -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Walkthrough</p>
+        <h2>Step by step</h2>
+
+        <div style="margin-top: 40px;"></div>
+
+        <div class="step">
+            <span class="step-num">Step 1</span>
+            <h3>Configure the broker</h3>
+            <p>Open a broker with LZ4 compression and a retention policy of 500 records per partition. The <code>BrokerConfig</code> struct uses builder-style defaults&mdash;<code>..BrokerConfig::new(path)</code> fills in <code>auto_create_topics: true</code> and <code>default_partitions: 1</code>.</p>
+            <pre><code><span class="kw">let</span> config = <span class="ty">BrokerConfig</span> {
+    compression: <span class="ty">Compression</span>::Lz4,
+    default_retention: <span class="ty">RetentionConfig</span> {
+        max_records: <span class="mc">Some</span>(500),
+    },
+    ..<span class="ty">BrokerConfig</span>::<span class="fn">new</span>(&amp;data_path)
+};
+<span class="kw">let</span> broker = <span class="ty">Broker</span>::<span class="fn">open</span>(config).<span class="fn">unwrap</span>();</code></pre>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 2</span>
+            <h3>Produce individual records</h3>
+            <p>Send 200 sensor readings one at a time. Each <code>ProducerRecord</code> carries a topic name, an optional key, and a string value. The key is the sensor ID&mdash;merkql hashes the key to determine partition assignment, so all readings from <code>sensor-a</code> go to the same partition.</p>
+            <pre><code><span class="kw">let</span> producer = <span class="ty">Broker</span>::<span class="fn">producer</span>(&amp;broker);
+<span class="kw">let</span> sensors = [<span class="str">"sensor-a"</span>, <span class="str">"sensor-b"</span>, <span class="str">"sensor-c"</span>, <span class="str">"sensor-d"</span>];
+
+<span class="kw">for</span> i <span class="kw">in</span> 0..200 {
+    <span class="kw">let</span> sensor_id = sensors[i % sensors.len()];
+    <span class="kw">let</span> reading = <span class="ty">SensorReading</span> {
+        temp: 20.0 + (i <span class="kw">as</span> <span class="ty">f64</span> * 0.1) % 20.0,
+        ts: 1700000000 + i <span class="kw">as</span> <span class="ty">u64</span>,
+    };
+    <span class="kw">let</span> value = serde_json::<span class="fn">to_string</span>(&amp;reading).<span class="fn">unwrap</span>();
+    producer.<span class="fn">send</span>(&amp;<span class="ty">ProducerRecord</span>::<span class="fn">new</span>(
+        <span class="str">"sensors"</span>,
+        <span class="mc">Some</span>(sensor_id.<span class="fn">to_string</span>()),
+        value,
+    )).<span class="fn">unwrap</span>();
+}</code></pre>
+            <p>Each <code>send()</code> call appends the record to the partition, updates the merkle tree, flushes the index, and fsyncs. This guarantees durability per record but costs ~31&micro;s each.</p>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 3</span>
+            <h3>Batch produce</h3>
+            <p>Send 800 more readings in 8 batches of 100 using <code>send_batch()</code>. Internally, the batch API buffers all writes and performs a single fsync at the end&mdash;significantly higher throughput for bulk ingestion.</p>
+            <pre><code><span class="kw">for</span> batch_num <span class="kw">in</span> 0..8 {
+    <span class="kw">let</span> batch: <span class="ty">Vec</span>&lt;<span class="ty">ProducerRecord</span>&gt; = (0..100)
+        .<span class="fn">map</span>(|j| {
+            <span class="kw">let</span> idx = 200 + batch_num * 100 + j;
+            <span class="ty">ProducerRecord</span>::<span class="fn">new</span>(
+                <span class="str">"sensors"</span>,
+                <span class="mc">Some</span>(sensors[idx % sensors.len()].<span class="fn">to_string</span>()),
+                serde_json::<span class="fn">to_string</span>(&amp;reading).<span class="fn">unwrap</span>(),
+            )
+        })
+        .<span class="fn">collect</span>();
+    producer.<span class="fn">send_batch</span>(&amp;batch).<span class="fn">unwrap</span>();
+}</code></pre>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 4</span>
+            <h3>Consume with the &ldquo;analytics&rdquo; group</h3>
+            <p>Create a consumer in the &ldquo;analytics&rdquo; group with <code>auto_commit: false</code> and <code>OffsetReset::Earliest</code>. Subscribe to the &ldquo;sensors&rdquo; topic and poll. Because retention is set to 500 records, only the most recent 500 are available&mdash;the first 500 have been logically trimmed.</p>
+            <pre><code><span class="kw">let mut</span> consumer = <span class="ty">Broker</span>::<span class="fn">consumer</span>(
+    &amp;broker,
+    <span class="ty">ConsumerConfig</span> {
+        group_id: <span class="str">"analytics"</span>.<span class="fn">into</span>(),
+        auto_commit: <span class="kw">false</span>,
+        offset_reset: <span class="ty">OffsetReset</span>::Earliest,
+    },
+);
+consumer.<span class="fn">subscribe</span>(&amp;[<span class="str">"sensors"</span>]).<span class="fn">unwrap</span>();
+<span class="kw">let</span> records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();</code></pre>
+            <p>After processing, <code>commit_sync()</code> persists the current offset to disk so the group can resume later without re-reading committed records.</p>
+            <pre><code><span class="cm">// Compute min/max/avg per sensor, then commit</span>
+consumer.<span class="fn">commit_sync</span>().<span class="fn">unwrap</span>();
+consumer.<span class="fn">close</span>().<span class="fn">unwrap</span>();</code></pre>
+            <div class="output">
+                <code>
+                    Polled <span class="hl">500 records</span>.<br>
+                    sensor-a: min=20.0, max=39.6, avg=30.8 (125 readings)<br>
+                    sensor-b: min=20.1, max=39.7, avg=30.9 (125 readings)<br>
+                    sensor-c: min=20.2, max=39.8, avg=31.0 (125 readings)<br>
+                    sensor-d: min=20.3, max=39.9, avg=31.1 (125 readings)
+                </code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 5</span>
+            <h3>Independent consumer group</h3>
+            <p>A second consumer group (&ldquo;alerts&rdquo;) reads the same topic independently. It filters for readings above 35.0&deg;C and prints alerts. Each group has its own committed offsets&mdash;the &ldquo;analytics&rdquo; group's earlier commit has no effect on where &ldquo;alerts&rdquo; starts reading.</p>
+            <pre><code><span class="kw">let mut</span> consumer = <span class="ty">Broker</span>::<span class="fn">consumer</span>(
+    &amp;broker,
+    <span class="ty">ConsumerConfig</span> {
+        group_id: <span class="str">"alerts"</span>.<span class="fn">into</span>(),
+        auto_commit: <span class="kw">false</span>,
+        offset_reset: <span class="ty">OffsetReset</span>::Earliest,
+    },
+);
+consumer.<span class="fn">subscribe</span>(&amp;[<span class="str">"sensors"</span>]).<span class="fn">unwrap</span>();
+<span class="kw">let</span> records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+
+<span class="kw">for</span> record <span class="kw">in</span> &amp;records {
+    <span class="kw">let</span> reading: <span class="ty">SensorReading</span> = serde_json::<span class="fn">from_str</span>(&amp;record.value).<span class="fn">unwrap</span>();
+    <span class="kw">if</span> reading.temp &gt; 35.0 {
+        <span class="mc">println!</span>(<span class="str">"ALERT: {} temp={:.1}"</span>,
+            record.key.<span class="fn">as_deref</span>().<span class="fn">unwrap_or</span>(<span class="str">"unknown"</span>), reading.temp);
+    }
+}</code></pre>
+            <div class="output">
+                <code>
+                    ALERT: sensor-d temp=35.1 at ts=1700000551<br>
+                    ALERT: sensor-a temp=35.2 at ts=1700000552<br>
+                    ALERT: sensor-b temp=35.3 at ts=1700000553<br>
+                    ... and 142 more alerts<br>
+                    Total alerts: <span class="hl">147 out of 500 readings</span>
+                </code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 6</span>
+            <h3>Broker restart</h3>
+            <p>Drop the broker entirely and reopen it from the same directory. All state&mdash;topics, partitions, merkle trees, consumer group offsets&mdash;is recovered from disk. This simulates a process restart.</p>
+            <pre><code><span class="mc">drop</span>(broker);
+
+<span class="kw">let</span> config = <span class="ty">BrokerConfig</span> {
+    compression: <span class="ty">Compression</span>::Lz4,
+    default_retention: <span class="ty">RetentionConfig</span> {
+        max_records: <span class="mc">Some</span>(500),
+    },
+    ..<span class="ty">BrokerConfig</span>::<span class="fn">new</span>(&amp;data_path)
+};
+<span class="kw">let</span> broker = <span class="ty">Broker</span>::<span class="fn">open</span>(config).<span class="fn">unwrap</span>();</code></pre>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 7</span>
+            <h3>Resume without duplicates</h3>
+            <p>The &ldquo;analytics&rdquo; consumer reconnects after the restart. Because it committed its offsets before the broker was dropped, it resumes from where it left off and receives zero records.</p>
+            <pre><code><span class="kw">let mut</span> consumer = <span class="ty">Broker</span>::<span class="fn">consumer</span>(&amp;broker, analytics_config);
+consumer.<span class="fn">subscribe</span>(&amp;[<span class="str">"sensors"</span>]).<span class="fn">unwrap</span>();
+<span class="kw">let</span> records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+<span class="cm">// records.len() == 0</span></code></pre>
+            <div class="output">
+                <code>Polled <span class="hl">0 records</span> (expected 0).</code>
+            </div>
+        </div>
+
+        <div class="step">
+            <span class="step-num">Step 8</span>
+            <h3>Incremental consumption</h3>
+            <p>Produce 100 more readings, then poll with the &ldquo;analytics&rdquo; group again. It receives exactly the 100 new records&mdash;no more, no less. This confirms that offset tracking works correctly across broker restarts.</p>
+            <pre><code><span class="cm">// Produce 100 more readings...</span>
+
+<span class="kw">let</span> records = consumer.<span class="fn">poll</span>(<span class="ty">Duration</span>::<span class="fn">from_millis</span>(100)).<span class="fn">unwrap</span>();
+<span class="mc">assert_eq!</span>(records.<span class="fn">len</span>(), 100);</code></pre>
+            <div class="output">
+                <code>
+                    <span class="hl">Produced 100 more readings.</span><br>
+                    Polled <span class="hl">100 records</span> (expected 100).
+                </code>
+            </div>
+        </div>
+
+        <div class="step" style="margin-bottom: 0;">
+            <span class="step-num">Step 9</span>
+            <h3>Disk usage</h3>
+            <p>The example prints the total size of the data directory. With LZ4 compression and 1,100 JSON sensor readings, the entire dataset (including merkle tree nodes, indices, and consumer group state) fits in approximately 563 KB.</p>
+            <div class="output">
+                <code>Data directory: <span class="hl">562.8 KB</span></code>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Concepts -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Concepts</p>
+        <h2>How it works</h2>
+
+        <div class="features">
+            <div class="feature">
+                <h3>Record routing</h3>
+                <p>When a record has a key, merkql hashes the key and routes to <code>hash(key) % num_partitions</code>. Without a key, records are distributed round-robin. This ensures all events for the same entity (sensor, user, cart) are ordered within a single partition.</p>
+            </div>
+            <div class="feature">
+                <h3>Consumer group offsets</h3>
+                <p>Each consumer group stores its committed offset per topic-partition in <code>.merkql/groups/{group_id}/offsets.bin</code>. On <code>subscribe()</code>, the consumer checks for committed offsets and resumes from there. If none exist, it falls back to the <code>offset_reset</code> policy (Earliest or Latest).</p>
+            </div>
+            <div class="feature">
+                <h3>Retention</h3>
+                <p>When <code>max_records</code> is set, the partition advances its <code>min_valid_offset</code> so that at most N records are readable. Records below this watermark return <code>None</code> on read. The data remains on disk (in the pack file) but is logically invisible.</p>
+            </div>
+            <div class="feature" style="margin-bottom: 0;">
+                <h3>Compression</h3>
+                <p>LZ4 compression is applied per-object in the pack file. Each compressed entry starts with a 1-byte marker (<code>0x00</code> for none, <code>0x01</code> for LZ4), so a broker can read data written with a different compression setting. Hashes are computed on uncompressed data.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- API Reference -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Reference</p>
+        <h2>APIs used</h2>
+
+        <table>
+            <thead><tr><th>API</th><th>Purpose</th></tr></thead>
+            <tbody>
+                <tr><td><code>BrokerConfig</code></td><td>LZ4 compression, retention of 500 records</td></tr>
+                <tr><td><code>Broker::open()</code></td><td>Open or create broker from a directory</td></tr>
+                <tr><td><code>Broker::producer()</code></td><td>Create a producer for the broker</td></tr>
+                <tr><td><code>Broker::consumer()</code></td><td>Create a consumer with group config</td></tr>
+                <tr><td><code>ProducerRecord::new()</code></td><td>Keyed records with JSON values</td></tr>
+                <tr><td><code>producer.send()</code></td><td>Individual record production with fsync</td></tr>
+                <tr><td><code>producer.send_batch()</code></td><td>Batch production with amortised fsync</td></tr>
+                <tr><td><code>consumer.subscribe()</code></td><td>Subscribe to topics, load committed offsets</td></tr>
+                <tr><td><code>consumer.poll()</code></td><td>Fetch records from current position</td></tr>
+                <tr><td><code>consumer.commit_sync()</code></td><td>Persist current position to disk</td></tr>
+                <tr><td><code>consumer.close()</code></td><td>Close consumer (auto-commits if configured)</td></tr>
+            </tbody>
+        </table>
+
+        <div class="install">
+            <code>cargo run -p merkql-sensor-pipeline</code>
+        </div>
+
+        <div class="nav-prev-next">
+            <span class="disabled">&larr; Previous</span>
+            <a href="audit-trail.html">Next: Audit trail &rarr;</a>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="grain grain-heavy">
+    <div class="wrap">
+        <div>
+            <p class="name">merkql</p>
+            <p style="font-size: 0.875rem; margin-top: 4px;">A <a href="https://tailoredshapes.github.io">TailoredShapes</a> project</p>
+        </div>
+        <div class="links">
+            <a href="../index.html">Home</a>
+            <a href="../examples.html">Examples</a>
+            <a href="https://github.com/tailoredshapes/merkql">GitHub</a>
+        </div>
+        <div class="bottom">
+            <p>&copy; 2025 TailoredShapes &middot; MIT License</p>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Examples — merkql</title>
+    <meta name="description" content="Three runnable example applications demonstrating merkql's key features: sensor pipelines, audit trails with merkle proofs, and event-sourced CQRS.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --warm-50:  #fafaf9;
+            --warm-100: #f5f5f4;
+            --warm-150: #ededeb;
+            --warm-200: #e7e5e4;
+            --warm-300: #d6d3d1;
+            --warm-400: #a8a29e;
+            --warm-500: #78716c;
+            --warm-600: #57534e;
+            --warm-700: #44403c;
+            --warm-800: #292524;
+            --warm-900: #1c1917;
+            --warm-950: #0f0e0d;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--warm-50);
+            color: var(--warm-800);
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        a { color: var(--warm-700); text-decoration: none; border-bottom: 1px solid var(--warm-300); padding-bottom: 1px; transition: color 0.2s, border-color 0.2s; }
+        a:hover { color: var(--warm-900); border-color: var(--warm-500); }
+
+        code, pre { font-family: 'SF Mono', 'Fira Code', 'Fira Mono', Consolas, monospace; }
+        code { font-size: 0.85em; background: var(--warm-100); padding: 0.1em 0.3em; border-radius: 2px; }
+        pre { background: var(--warm-900); color: var(--warm-300); border-radius: 4px; padding: 20px; overflow-x: auto; font-size: 0.825rem; line-height: 1.65; }
+        pre code { background: none; padding: 0; font-size: inherit; }
+
+        .grain::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            opacity: 0.035;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+            background-repeat: repeat;
+            background-size: 256px 256px;
+        }
+        .grain-heavy::after { opacity: 0.05; }
+
+        .wrap { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+
+        /* Hero */
+        .hero {
+            position: relative;
+            background: var(--warm-950);
+            color: var(--warm-100);
+            padding: 96px 24px 80px;
+        }
+
+        .hero h1 { font-size: 2.5rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; }
+        .hero .tagline { margin-top: 16px; font-size: 1.05rem; color: var(--warm-400); max-width: 480px; line-height: 1.6; }
+
+        .hero .traits { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .hero .trait { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.04em; color: var(--warm-400); border: 1px solid var(--warm-700); padding: 3px 10px; border-radius: 2px; }
+
+        .hero-links { margin-top: 32px; display: flex; gap: 24px; font-size: 0.875rem; }
+        .hero-links a { color: var(--warm-400); border-bottom: 1px solid var(--warm-700); }
+        .hero-links a:first-child { color: var(--warm-200); border-color: var(--warm-600); }
+        .hero-links a:hover { color: var(--warm-200); border-color: var(--warm-400); }
+
+        /* Sections */
+        section { position: relative; padding: 80px 24px; }
+        .section-label { font-size: 0.7rem; font-weight: 500; letter-spacing: 0.2em; text-transform: uppercase; color: var(--warm-400); margin-bottom: 20px; }
+        section h2 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 12px; }
+        section > .wrap > p { color: var(--warm-500); max-width: 480px; margin-bottom: 12px; }
+
+        .divider { max-width: 640px; margin: 0 auto; padding: 0 24px; }
+        .divider hr { border: none; border-top: 1px solid var(--warm-200); }
+
+        /* Feature list */
+        .features { margin-top: 48px; }
+        .feature { border-left: 2px solid var(--warm-200); padding-left: 24px; margin-bottom: 32px; }
+        .feature h3 { font-size: 0.95rem; font-weight: 500; color: var(--warm-800); }
+        .feature p { margin-top: 4px; font-size: 0.875rem; color: var(--warm-500); line-height: 1.6; max-width: 480px; }
+
+        /* Install */
+        .install { margin: 16px 0; }
+        .install code { font-size: 0.95rem; background: var(--warm-900); color: var(--warm-200); padding: 8px 16px; border-radius: 4px; display: inline-block; }
+
+        /* Example cards */
+        .example-cards { margin-top: 48px; }
+        .example-card { border: 1px solid var(--warm-200); border-radius: 4px; padding: 32px; margin-bottom: 24px; transition: border-color 0.2s; }
+        .example-card:hover { border-color: var(--warm-400); }
+        .example-card a.card-link { border: none; }
+        .example-card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+        .example-card p { font-size: 0.9rem; color: var(--warm-500); line-height: 1.7; margin-bottom: 12px; }
+        .example-card .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+        .example-card .tag { font-size: 0.65rem; font-weight: 500; letter-spacing: 0.04em; color: var(--warm-400); border: 1px solid var(--warm-200); padding: 2px 8px; border-radius: 2px; }
+        .example-card .read-more { font-size: 0.85rem; font-weight: 500; color: var(--warm-700); border-bottom: 1px solid var(--warm-300); }
+        .example-card:hover .read-more { color: var(--warm-900); border-color: var(--warm-500); }
+
+        /* Syntax */
+        .kw  { color: #d6a0a0; }
+        .fn  { color: #c4b5d0; }
+        .str { color: #b5c9d5; }
+        .cm  { color: var(--warm-600); font-style: italic; }
+        .mc  { color: #d4c5a0; }
+        .ty  { color: #a8c5a8; }
+
+        /* Footer */
+        footer { position: relative; background: var(--warm-950); color: var(--warm-500); padding: 48px 24px; }
+        footer .wrap { display: flex; flex-direction: column; gap: 24px; }
+        @media (min-width: 640px) { footer .wrap { flex-direction: row; justify-content: space-between; align-items: baseline; } }
+        footer .name { color: var(--warm-100); font-weight: 500; }
+        footer a { color: var(--warm-500); border: none; }
+        footer a:hover { color: var(--warm-200); }
+        footer .links { display: flex; gap: 24px; font-size: 0.875rem; }
+        footer .bottom { width: 100%; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--warm-800); font-size: 0.75rem; color: var(--warm-700); }
+
+        @media (max-width: 640px) {
+            .hero h1 { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Hero -->
+<div class="hero grain grain-heavy">
+    <div class="wrap">
+        <h1>Examples</h1>
+        <p class="tagline">
+            Three runnable applications demonstrating merkql's core patterns, integrity verification, and event sourcing capabilities.
+        </p>
+        <div class="traits">
+            <span class="trait">Self-contained</span>
+            <span class="trait">Temp directory</span>
+            <span class="trait">No setup</span>
+        </div>
+        <div class="hero-links">
+            <a href="index.html">Home</a>
+            <a href="https://github.com/tailoredshapes/merkql/tree/main/examples">Source on GitHub</a>
+        </div>
+    </div>
+</div>
+
+<!-- Overview -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Getting Started</p>
+        <h2>Running the examples</h2>
+        <p>Each example is a standalone Cargo project that runs end-to-end in a temporary directory. No external services, no configuration, no cleanup.</p>
+
+        <div class="install" style="margin-top: 24px;">
+            <code>cargo run -p merkql-sensor-pipeline</code>
+        </div>
+        <div class="install">
+            <code>cargo run -p merkql-audit-trail</code>
+        </div>
+        <div class="install">
+            <code>cargo run -p merkql-event-sourced-cart</code>
+        </div>
+
+        <div class="example-cards">
+            <div class="example-card">
+                <a href="examples/sensor-pipeline.html" class="card-link">
+                    <h3>Sensor pipeline</h3>
+                </a>
+                <p>A complete IoT data pipeline: ingest 1,000 sensor readings with keyed records, consume with two independent consumer groups for analytics and alerting, exercise LZ4 compression and retention policies, and verify that committed offsets survive a full broker restart.</p>
+                <div class="tags">
+                    <span class="tag">Producer</span>
+                    <span class="tag">send_batch</span>
+                    <span class="tag">Consumer groups</span>
+                    <span class="tag">LZ4</span>
+                    <span class="tag">Retention</span>
+                    <span class="tag">Restart</span>
+                </div>
+                <a href="examples/sensor-pipeline.html" class="read-more">Read the walkthrough &rarr;</a>
+            </div>
+
+            <div class="example-card">
+                <a href="examples/audit-trail.html" class="card-link">
+                    <h3>Audit trail</h3>
+                </a>
+                <p>Demonstrates merkql's cryptographic integrity guarantees: generate and verify SHA-256 merkle inclusion proofs, observe root hash progression as records are appended, confirm that earlier proofs remain valid after growth, and detect on-disk data tampering through hash comparison.</p>
+                <div class="tags">
+                    <span class="tag">Merkle proofs</span>
+                    <span class="tag">Verification</span>
+                    <span class="tag">Root progression</span>
+                    <span class="tag">Tamper detection</span>
+                    <span class="tag">SHA-256</span>
+                </div>
+                <a href="examples/audit-trail.html" class="read-more">Read the walkthrough &rarr;</a>
+            </div>
+
+            <div class="example-card">
+                <a href="examples/event-sourced-cart.html" class="card-link">
+                    <h3>Event-sourced cart</h3>
+                </a>
+                <p>Implements event sourcing and CQRS: a stream of shopping cart domain events is replayed by two independent consumer groups, each building a different materialized view&mdash;one for cart state, one for revenue reporting. Then demonstrates incremental projection updates without full replay.</p>
+                <div class="tags">
+                    <span class="tag">Event sourcing</span>
+                    <span class="tag">CQRS</span>
+                    <span class="tag">Projections</span>
+                    <span class="tag">Keyed records</span>
+                    <span class="tag">Incremental</span>
+                </div>
+                <a href="examples/event-sourced-cart.html" class="read-more">Read the walkthrough &rarr;</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div class="divider"><hr></div>
+
+<!-- Project structure -->
+<section class="grain">
+    <div class="wrap">
+        <p class="section-label">Reference</p>
+        <h2>Project structure</h2>
+        <p>Each example is a standalone Cargo project with a <code>path</code> dependency on merkql.</p>
+        <div style="margin-top: 24px;"></div>
+        <pre><code>examples/
+<span class="cm">&boxvr;&boxh;&boxh;</span> sensor-pipeline/
+<span class="cm">&boxv;</span>   <span class="cm">&boxvr;&boxh;&boxh;</span> Cargo.toml
+<span class="cm">&boxv;</span>   <span class="cm">&boxur;&boxh;&boxh;</span> src/main.rs         <span class="cm"># 249 lines</span>
+<span class="cm">&boxvr;&boxh;&boxh;</span> audit-trail/
+<span class="cm">&boxv;</span>   <span class="cm">&boxvr;&boxh;&boxh;</span> Cargo.toml
+<span class="cm">&boxv;</span>   <span class="cm">&boxur;&boxh;&boxh;</span> src/main.rs         <span class="cm"># 234 lines</span>
+<span class="cm">&boxur;&boxh;&boxh;</span> event-sourced-cart/
+    <span class="cm">&boxvr;&boxh;&boxh;</span> Cargo.toml
+    <span class="cm">&boxur;&boxh;&boxh;</span> src/main.rs         <span class="cm"># 321 lines</span></code></pre>
+
+        <div style="margin-top: 24px;"></div>
+        <pre><code><span class="cm"># Build all examples</span>
+cargo build -p merkql-sensor-pipeline \
+            -p merkql-audit-trail \
+            -p merkql-event-sourced-cart
+
+<span class="cm"># Run individually</span>
+cargo run -p merkql-sensor-pipeline
+cargo run -p merkql-audit-trail
+cargo run -p merkql-event-sourced-cart</code></pre>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="grain grain-heavy">
+    <div class="wrap">
+        <div>
+            <p class="name">merkql</p>
+            <p style="font-size: 0.875rem; margin-top: 4px;">A <a href="https://tailoredshapes.github.io">TailoredShapes</a> project</p>
+        </div>
+        <div class="links">
+            <a href="index.html">Home</a>
+            <a href="https://github.com/tailoredshapes/merkql">GitHub</a>
+            <a href="https://github.com/tailoredshapes/merkql/blob/main/BENCHMARKS.md">Benchmarks</a>
+            <a href="https://github.com/tailoredshapes/merkql/blob/main/FAILURE-MODES.md">Failure modes</a>
+        </div>
+        <div class="bottom">
+            <p>&copy; 2025 TailoredShapes &middot; MIT License</p>
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>

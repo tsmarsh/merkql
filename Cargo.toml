@@ -10,6 +10,9 @@ license = "MIT"
 keywords = ["kafka", "event-streaming", "merkle-tree", "audit-log", "embedded"]
 categories = ["data-structures", "database-implementations"]
 readme = "README.md"
+repository = "https://github.com/tailoredshapes/merkql"
+homepage = "https://tailoredshapes.github.io/merkql/"
+documentation = "https://tailoredshapes.github.io/merkql/"
 
 [dependencies]
 sha2 = "0.10"

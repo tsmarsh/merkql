@@ -215,8 +215,8 @@ fn truncated_pack_mid_data() {
 }
 
 /// Nemesis 9: Missing pack file — delete objects.pack and reopen.
-/// Asserts: broker reopens (index drives offset count), reads fail gracefully
-/// for records whose objects are gone.
+/// Asserts: broker reopens, tail validation truncates orphaned index entries
+/// (objects are gone), and new appends succeed.
 #[test]
 fn missing_pack_file() {
     let dir = tempfile::tempdir().unwrap();
@@ -231,32 +231,35 @@ fn missing_pack_file() {
     assert!(pack.exists(), "pack file should exist after producing");
     std::fs::remove_file(&pack).unwrap();
 
-    // Broker should reopen — the index determines next_offset
+    // Broker should reopen — tail validation detects orphaned index entries
+    // (hashes missing from pack store) and truncates the index to 0
     let broker = Broker::open(broker_config(dir.path())).unwrap();
     let topic = broker.topic("no-pack").unwrap();
     let part_arc = topic.partition(0).unwrap();
     let partition = part_arc.read().unwrap();
 
-    // The partition knows about N offsets (from the index), but reads will fail
-    // because the pack file is now empty
-    assert_eq!(partition.next_offset(), n as u64);
-
-    // Reading should error (objects are gone) — this is expected
-    let read_result = partition.read(0);
-    assert!(
-        read_result.is_err(),
-        "reading from empty pack should fail, not silently succeed"
+    // With tail validation, index is truncated because objects are gone
+    assert_eq!(
+        partition.next_offset(),
+        0,
+        "orphaned index entries should be truncated when pack file is missing"
     );
 
-    // But we should be able to append new records
+    // We should be able to append new records starting from offset 0
     drop(partition);
     drop(part_arc);
     let producer = Broker::producer(&broker);
     let pr = ProducerRecord::new("no-pack", None, "after-pack-delete");
+    let result = producer.send(&pr);
     assert!(
-        producer.send(&pr).is_ok(),
+        result.is_ok(),
         "should be able to append after pack file loss"
     );
+
+    // Verify the new record is readable
+    let record = result.unwrap();
+    assert_eq!(record.offset, 0);
+    assert_eq!(record.value, "after-pack-delete");
 }
 
 /// Nemesis 10: Corrupted byte in the middle of pack file — flip a byte in a

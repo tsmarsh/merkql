@@ -898,8 +898,11 @@ pub fn check_truncated_snapshot(dir: &Path, n: usize) -> NemesisResult {
     }
 }
 
-/// Nemesis 3: Truncated offsets.idx — remove 16 bytes (half an entry) from the index.
+/// Nemesis 3: Truncated offsets.idx — remove 16 bytes (partial entry) from the index.
+/// Index entry format: [4 bytes CRC32][32 bytes hash] = 36 bytes per entry.
 pub fn check_truncated_index(dir: &Path, n: usize) -> NemesisResult {
+    const INDEX_ENTRY_SIZE: u64 = 36; // CRC32 + SHA-256
+
     {
         let broker = Broker::open(broker_config(dir)).unwrap();
         produce_n(&broker, "trunc-idx", n, |i| format!("v{}", i), |_| None);
@@ -912,12 +915,12 @@ pub fn check_truncated_index(dir: &Path, n: usize) -> NemesisResult {
     );
     let index_path = index_path.unwrap();
     let original_len = std::fs::metadata(&index_path).unwrap().len();
-    let truncated_len = original_len - 16; // Remove half an entry (entry = 32 bytes)
+    let truncated_len = original_len - 16; // Remove partial entry
 
     let data = std::fs::read(&index_path).unwrap();
     std::fs::write(&index_path, &data[..truncated_len as usize]).unwrap();
 
-    let expected_entries = truncated_len / 32;
+    let expected_entries = truncated_len / INDEX_ENTRY_SIZE;
 
     let result = Broker::open(broker_config(dir));
     match result {
@@ -943,7 +946,7 @@ pub fn check_truncated_index(dir: &Path, n: usize) -> NemesisResult {
                 name: "Truncated Index".to_string(),
                 fault: format!(
                     "Truncate offsets.idx by 16 bytes ({} -> {} entries)",
-                    original_len / 32,
+                    original_len / INDEX_ENTRY_SIZE,
                     expected_entries
                 ),
                 outcome: if passed {

@@ -8,8 +8,8 @@ use std::fs;
 use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
-/// Fixed-width index entry: 32 bytes (SHA-256 hash of the record object).
-const INDEX_ENTRY_SIZE: usize = 32;
+/// Fixed-width index entry: 4 bytes CRC32 + 32 bytes SHA-256 hash = 36 bytes.
+const INDEX_ENTRY_SIZE: usize = 36;
 
 /// CRC32 checksum size in bytes.
 const CRC_SIZE: usize = 4;
@@ -103,15 +103,78 @@ impl Partition {
             MerkleTree::new()
         };
 
-        // Determine next offset from index size using file handle (not metadata on path)
+        // Determine next offset from index size using file handle (not metadata on path).
+        // Truncate partial entries and validate tail entries against the object store.
         let index_path = dir.join("offsets.idx");
         let next_offset = if index_path.exists() {
-            let mut f =
-                fs::File::open(&index_path).context("opening index for size determination")?;
+            let mut f = fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&index_path)
+                .context("opening index for validation")?;
             let len = f
                 .seek(SeekFrom::End(0))
                 .context("seeking to end of index")?;
-            len / INDEX_ENTRY_SIZE as u64
+
+            // Truncate any trailing partial entry
+            let valid_len = (len / INDEX_ENTRY_SIZE as u64) * INDEX_ENTRY_SIZE as u64;
+            if valid_len < len {
+                f.set_len(valid_len)
+                    .context("truncating partial index entry")?;
+                f.sync_all().context("syncing after index truncation")?;
+            }
+
+            let mut entry_count = valid_len / INDEX_ENTRY_SIZE as u64;
+
+            // Validate tail entries: walk backwards, removing entries with bad CRC
+            // or hashes missing from the object store (crash during write)
+            while entry_count > 0 {
+                let entry_pos = (entry_count - 1) * INDEX_ENTRY_SIZE as u64;
+                f.seek(SeekFrom::Start(entry_pos))
+                    .context("seeking to tail entry")?;
+
+                let mut crc_buf = [0u8; CRC_SIZE];
+                if f.read_exact(&mut crc_buf).is_err() {
+                    entry_count -= 1;
+                    continue;
+                }
+                let stored_crc = u32::from_le_bytes(crc_buf);
+
+                let mut hash_buf = [0u8; 32];
+                if f.read_exact(&mut hash_buf).is_err() {
+                    entry_count -= 1;
+                    continue;
+                }
+
+                let computed_crc = crc32fast::hash(&hash_buf);
+                if stored_crc != computed_crc {
+                    // CRC mismatch — truncate this entry and keep checking
+                    entry_count -= 1;
+                    continue;
+                }
+
+                // CRC valid — check if the object exists in the pack store
+                let hash = Hash(hash_buf);
+                if !store.exists(&hash) {
+                    // Object missing from pack — index wrote but pack didn't flush
+                    entry_count -= 1;
+                    continue;
+                }
+
+                // This entry is good — everything before it is fine too
+                break;
+            }
+
+            // Truncate index to validated length
+            let validated_len = entry_count * INDEX_ENTRY_SIZE as u64;
+            if validated_len < valid_len {
+                f.set_len(validated_len)
+                    .context("truncating invalid tail entries")?;
+                f.sync_all()
+                    .context("syncing after tail entry truncation")?;
+            }
+
+            entry_count
         } else {
             0
         };
@@ -176,10 +239,14 @@ impl Partition {
         // Append to merkle tree
         self.tree.append(record_hash, offset, &self.store)?;
 
-        // Append to offset index (buffered)
+        // Append to offset index: [4 bytes CRC32][32 bytes hash]
+        let entry_crc = crc32fast::hash(&record_hash.0);
+        self.index_writer
+            .write_all(&entry_crc.to_le_bytes())
+            .context("writing index entry CRC")?;
         self.index_writer
             .write_all(&record_hash.0)
-            .context("writing index entry")?;
+            .context("writing index entry hash")?;
 
         // Flush and fsync index + pack file
         self.index_writer.flush().context("flushing index")?;
@@ -218,10 +285,14 @@ impl Partition {
             // Append to merkle tree
             self.tree.append(record_hash, offset, &self.store)?;
 
-            // Buffer index entry
+            // Buffer index entry: [4 bytes CRC32][32 bytes hash]
+            let entry_crc = crc32fast::hash(&record_hash.0);
+            self.index_writer
+                .write_all(&entry_crc.to_le_bytes())
+                .context("writing index entry CRC")?;
             self.index_writer
                 .write_all(&record_hash.0)
-                .context("writing index entry")?;
+                .context("writing index entry hash")?;
 
             self.next_offset += 1;
             offsets.push(offset);
@@ -305,9 +376,28 @@ impl Partition {
         let seek_pos = offset * INDEX_ENTRY_SIZE as u64;
         std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(seek_pos))
             .context("seeking in index")?;
-        let mut buf = [0u8; 32];
-        file.read_exact(&mut buf).context("reading index entry")?;
-        Ok(Hash(buf))
+
+        // Read CRC32 + hash
+        let mut crc_buf = [0u8; CRC_SIZE];
+        file.read_exact(&mut crc_buf)
+            .context("reading index entry CRC")?;
+        let stored_crc = u32::from_le_bytes(crc_buf);
+
+        let mut hash_buf = [0u8; 32];
+        file.read_exact(&mut hash_buf)
+            .context("reading index entry hash")?;
+
+        let computed_crc = crc32fast::hash(&hash_buf);
+        if stored_crc != computed_crc {
+            anyhow::bail!(
+                "index entry CRC mismatch at offset {}: stored={:#010x} computed={:#010x}",
+                offset,
+                stored_crc,
+                computed_crc
+            );
+        }
+
+        Ok(Hash(hash_buf))
     }
 }
 

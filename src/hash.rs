@@ -33,7 +33,6 @@ impl Hash {
     pub fn suffix(&self) -> String {
         hex::encode(&self.0[1..])
     }
-
 }
 
 impl fmt::Debug for Hash {

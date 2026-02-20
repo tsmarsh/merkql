@@ -56,39 +56,175 @@ fn main() {
 
     let events: Vec<CartEvent> = vec![
         // Cart 1: build up and checkout
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Widget".into(), qty: 2, price: 9.99 },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Gadget".into(), qty: 1, price: 24.99 },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Doohickey".into(), qty: 3, price: 4.50 },
-        CartEvent::RemoveItem { cart_id: "cart-1".into(), item: "Doohickey".into() },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Thingamajig".into(), qty: 1, price: 15.00 },
-        CartEvent::Checkout { cart_id: "cart-1".into() },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Widget".into(),
+            qty: 2,
+            price: 9.99,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Gadget".into(),
+            qty: 1,
+            price: 24.99,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Doohickey".into(),
+            qty: 3,
+            price: 4.50,
+        },
+        CartEvent::RemoveItem {
+            cart_id: "cart-1".into(),
+            item: "Doohickey".into(),
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Thingamajig".into(),
+            qty: 1,
+            price: 15.00,
+        },
+        CartEvent::Checkout {
+            cart_id: "cart-1".into(),
+        },
         // Cart 2: build up and checkout
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Sprocket".into(), qty: 5, price: 3.25 },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Cog".into(), qty: 10, price: 1.50 },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Gear".into(), qty: 2, price: 12.00 },
-        CartEvent::RemoveItem { cart_id: "cart-2".into(), item: "Cog".into() },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Bearing".into(), qty: 4, price: 6.75 },
-        CartEvent::Checkout { cart_id: "cart-2".into() },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Sprocket".into(),
+            qty: 5,
+            price: 3.25,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Cog".into(),
+            qty: 10,
+            price: 1.50,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Gear".into(),
+            qty: 2,
+            price: 12.00,
+        },
+        CartEvent::RemoveItem {
+            cart_id: "cart-2".into(),
+            item: "Cog".into(),
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Bearing".into(),
+            qty: 4,
+            price: 6.75,
+        },
+        CartEvent::Checkout {
+            cart_id: "cart-2".into(),
+        },
         // Cart 3: build up, no checkout yet
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Bolt".into(), qty: 100, price: 0.10 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Nut".into(), qty: 100, price: 0.08 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Washer".into(), qty: 50, price: 0.05 },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Bolt".into(),
+            qty: 100,
+            price: 0.10,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Nut".into(),
+            qty: 100,
+            price: 0.08,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Washer".into(),
+            qty: 50,
+            price: 0.05,
+        },
         // More events to reach 30
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Gizmo".into(), qty: 2, price: 7.50 },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Flange".into(), qty: 1, price: 18.00 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Rivet".into(), qty: 200, price: 0.03 },
-        CartEvent::RemoveItem { cart_id: "cart-3".into(), item: "Washer".into() },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Doodad".into(), qty: 3, price: 5.99 },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Bracket".into(), qty: 2, price: 8.50 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Pin".into(), qty: 50, price: 0.15 },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Widget".into(), qty: 1, price: 9.99 },
-        CartEvent::RemoveItem { cart_id: "cart-2".into(), item: "Flange".into() },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Axle".into(), qty: 1, price: 35.00 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Screw".into(), qty: 150, price: 0.04 },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Spring".into(), qty: 4, price: 2.25 },
-        CartEvent::AddItem { cart_id: "cart-2".into(), item: "Pulley".into(), qty: 2, price: 11.00 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Anchor".into(), qty: 10, price: 1.20 },
-        CartEvent::AddItem { cart_id: "cart-1".into(), item: "Lever".into(), qty: 1, price: 13.50 },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Gizmo".into(),
+            qty: 2,
+            price: 7.50,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Flange".into(),
+            qty: 1,
+            price: 18.00,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Rivet".into(),
+            qty: 200,
+            price: 0.03,
+        },
+        CartEvent::RemoveItem {
+            cart_id: "cart-3".into(),
+            item: "Washer".into(),
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Doodad".into(),
+            qty: 3,
+            price: 5.99,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Bracket".into(),
+            qty: 2,
+            price: 8.50,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Pin".into(),
+            qty: 50,
+            price: 0.15,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Widget".into(),
+            qty: 1,
+            price: 9.99,
+        },
+        CartEvent::RemoveItem {
+            cart_id: "cart-2".into(),
+            item: "Flange".into(),
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Axle".into(),
+            qty: 1,
+            price: 35.00,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Screw".into(),
+            qty: 150,
+            price: 0.04,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Spring".into(),
+            qty: 4,
+            price: 2.25,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-2".into(),
+            item: "Pulley".into(),
+            qty: 2,
+            price: 11.00,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Anchor".into(),
+            qty: 10,
+            price: 1.20,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-1".into(),
+            item: "Lever".into(),
+            qty: 1,
+            price: 13.50,
+        },
     ];
 
     for event in &events {
@@ -168,11 +304,31 @@ fn main() {
     // Step 6: Incremental update — 5 more events (cart-3 adds + checkout)
     println!("--- Step 6: Produce 5 more events (cart-3 completion) ---");
     let new_events: Vec<CartEvent> = vec![
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Clamp".into(), qty: 5, price: 2.50 },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Hinge".into(), qty: 8, price: 1.75 },
-        CartEvent::RemoveItem { cart_id: "cart-3".into(), item: "Anchor".into() },
-        CartEvent::AddItem { cart_id: "cart-3".into(), item: "Latch".into(), qty: 3, price: 4.00 },
-        CartEvent::Checkout { cart_id: "cart-3".into() },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Clamp".into(),
+            qty: 5,
+            price: 2.50,
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Hinge".into(),
+            qty: 8,
+            price: 1.75,
+        },
+        CartEvent::RemoveItem {
+            cart_id: "cart-3".into(),
+            item: "Anchor".into(),
+        },
+        CartEvent::AddItem {
+            cart_id: "cart-3".into(),
+            item: "Latch".into(),
+            qty: 3,
+            price: 4.00,
+        },
+        CartEvent::Checkout {
+            cart_id: "cart-3".into(),
+        },
     ];
 
     for event in &new_events {
@@ -203,7 +359,11 @@ fn main() {
         );
         consumer.subscribe(&["cart-events"]).unwrap();
         let records = consumer.poll(Duration::from_millis(100)).unwrap();
-        println!("    Polled {} new records (expected {}).", records.len(), new_events.len());
+        println!(
+            "    Polled {} new records (expected {}).",
+            records.len(),
+            new_events.len()
+        );
 
         for record in &records {
             let event: CartEvent = serde_json::from_str(&record.value).unwrap();
@@ -227,7 +387,11 @@ fn main() {
         );
         consumer.subscribe(&["cart-events"]).unwrap();
         let records = consumer.poll(Duration::from_millis(100)).unwrap();
-        println!("    Polled {} new records (expected {}).", records.len(), new_events.len());
+        println!(
+            "    Polled {} new records (expected {}).",
+            records.len(),
+            new_events.len()
+        );
 
         for record in &records {
             let event: CartEvent = serde_json::from_str(&record.value).unwrap();

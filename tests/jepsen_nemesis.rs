@@ -91,7 +91,13 @@ fn truncated_pack_mid_header() {
 
     {
         let broker = Broker::open(broker_config(dir.path())).unwrap();
-        produce_n(&broker, "trunc-pack-hdr", n, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "trunc-pack-hdr",
+            n,
+            |i| format!("v{}", i),
+            |_| None,
+        );
     }
 
     let pack = pack_path(dir.path(), "trunc-pack-hdr");
@@ -134,7 +140,13 @@ fn truncated_pack_mid_hash() {
 
     {
         let broker = Broker::open(broker_config(dir.path())).unwrap();
-        produce_n(&broker, "trunc-pack-hash", n, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "trunc-pack-hash",
+            n,
+            |i| format!("v{}", i),
+            |_| None,
+        );
     }
 
     let pack = pack_path(dir.path(), "trunc-pack-hash");
@@ -169,7 +181,13 @@ fn truncated_pack_mid_data() {
 
     {
         let broker = Broker::open(broker_config(dir.path())).unwrap();
-        produce_n(&broker, "trunc-pack-data", n, |i| format!("v{}", i), |_| None);
+        produce_n(
+            &broker,
+            "trunc-pack-data",
+            n,
+            |i| format!("v{}", i),
+            |_| None,
+        );
     }
 
     let pack = pack_path(dir.path(), "trunc-pack-data");

@@ -5,6 +5,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+/// CRC32 checksum size in bytes.
+const CRC_SIZE: usize = 4;
+
 /// Identifies a specific topic-partition pair.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TopicPartition {
@@ -12,14 +15,42 @@ pub struct TopicPartition {
     pub partition: u32,
 }
 
-/// Atomically write data to a file using temp+fsync+rename.
+/// Atomically write checksummed data to a file using temp+fsync+rename+fsync-parent.
+/// Format: [4 bytes CRC32 of data][data...]
 fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+    let crc = crc32fast::hash(data);
     let tmp = path.with_extension("tmp");
     let mut f = fs::File::create(&tmp).context("creating temp file for atomic write")?;
+    f.write_all(&crc.to_le_bytes())
+        .context("writing CRC32 checksum")?;
     f.write_all(data).context("writing atomic data")?;
     f.sync_all().context("syncing atomic write")?;
     fs::rename(&tmp, path).context("renaming atomic write")?;
+
+    // fsync parent directory to ensure the directory entry is durable (NFS safety)
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+
     Ok(())
+}
+
+/// Read checksummed data written by `atomic_write`.
+/// Returns Ok(Some(data)) on success, Ok(None) if CRC mismatch.
+fn atomic_read(path: &Path) -> Result<Option<Vec<u8>>> {
+    let raw = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    if raw.len() < CRC_SIZE {
+        return Ok(None);
+    }
+    let stored_crc = u32::from_le_bytes(raw[..CRC_SIZE].try_into().unwrap());
+    let data = &raw[CRC_SIZE..];
+    let computed_crc = crc32fast::hash(data);
+    if stored_crc != computed_crc {
+        return Ok(None);
+    }
+    Ok(Some(data.to_vec()))
 }
 
 /// Persists per-TopicPartition committed offsets for a consumer group.
@@ -36,8 +67,13 @@ impl ConsumerGroup {
 
         let offsets_path = dir.join("offsets.bin");
         let offsets = if offsets_path.exists() {
-            let data = fs::read(&offsets_path).context("reading offsets")?;
-            bincode::deserialize(&data).context("deserializing offsets")?
+            match atomic_read(&offsets_path) {
+                Ok(Some(data)) => {
+                    bincode::deserialize(&data).unwrap_or_else(|_| HashMap::new())
+                }
+                Ok(None) => HashMap::new(), // CRC mismatch → re-consume from beginning
+                Err(_) => HashMap::new(),   // read error → re-consume from beginning
+            }
         } else {
             HashMap::new()
         };
@@ -67,8 +103,19 @@ impl ConsumerGroup {
     }
 
     fn persist(&self) -> Result<()> {
+        // Acquire flock for writer exclusion
+        let lock_path = self.dir.join("group.lock");
+        let lock_file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&lock_path)
+            .context("opening group lock file")?;
+        fs2::FileExt::lock_exclusive(&lock_file).context("acquiring group lock")?;
+
         let data = bincode::serialize(&self.offsets).context("serializing offsets")?;
         atomic_write(&self.dir.join("offsets.bin"), &data).context("writing offsets")?;
+
+        // Lock released on drop of lock_file
         Ok(())
     }
 }
@@ -126,5 +173,33 @@ mod tests {
         assert_eq!(group.committed_offset(&tp1), Some(10));
         assert_eq!(group.committed_offset(&tp2), Some(20));
         assert_eq!(group.committed_offset(&tp3), Some(30));
+    }
+
+    #[test]
+    fn corrupt_offsets_crc_defaults_to_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path().join("group");
+
+        let tp = TopicPartition {
+            topic: "t1".into(),
+            partition: 0,
+        };
+
+        {
+            let mut group = ConsumerGroup::open("g1", &group_dir).unwrap();
+            let mut offsets = HashMap::new();
+            offsets.insert(tp.clone(), 42);
+            group.commit(&offsets).unwrap();
+        }
+
+        // Corrupt the offsets.bin CRC
+        let offsets_path = group_dir.join("offsets.bin");
+        let mut data = fs::read(&offsets_path).unwrap();
+        data[0] ^= 0xFF;
+        fs::write(&offsets_path, &data).unwrap();
+
+        // Reopen — should default to empty offsets
+        let group = ConsumerGroup::open("g1", &group_dir).unwrap();
+        assert_eq!(group.committed_offset(&tp), None);
     }
 }

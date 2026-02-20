@@ -107,7 +107,10 @@ fn main() {
     };
     println!("  Root before: {:.32}...", root_before.to_hex());
     println!("  Root after:  {:.32}...", root_after.to_hex());
-    assert_ne!(root_before, root_after, "Root should change after appending");
+    assert_ne!(
+        root_before, root_after,
+        "Root should change after appending"
+    );
     println!("  Root changed as expected.\n");
 
     // Step 7: Re-verify the 5 earlier proofs (appending doesn't invalidate them)
@@ -152,16 +155,16 @@ fn main() {
             .path()
             .join(".merkql/topics/audit/partitions/0/objects.pack");
         tamper_pack_file(&pack_path, &expected_hash);
-        println!("  Tampered with pack file data for offset {}.", tamper_offset);
+        println!(
+            "  Tampered with pack file data for offset {}.",
+            tamper_offset
+        );
 
         // Now try to read the record — the data will be corrupted
         let corrupted_data = partition.store().get(&expected_hash).unwrap();
         let corrupted_hash = Hash::digest(&corrupted_data);
         let hashes_match = expected_hash == corrupted_hash;
-        println!(
-            "  Re-read hash:  {:.32}...",
-            corrupted_hash.to_hex()
-        );
+        println!("  Re-read hash:  {:.32}...", corrupted_hash.to_hex());
         println!(
             "  Integrity check: hashes match = {} (tamper {})",
             hashes_match,

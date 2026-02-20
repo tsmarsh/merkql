@@ -153,7 +153,11 @@ fn main() {
         if alert_count > 5 {
             println!("  ... and {} more alerts", alert_count - 5);
         }
-        println!("  Total alerts: {} out of {} readings\n", alert_count, records.len());
+        println!(
+            "  Total alerts: {} out of {} readings\n",
+            alert_count,
+            records.len()
+        );
 
         consumer.commit_sync().unwrap();
         consumer.close().unwrap();

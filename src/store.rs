@@ -16,6 +16,9 @@ const IDX_ENTRY_SIZE: usize = 44;
 /// Size of the index file header: 8 bytes (pack_size as u64 LE).
 const IDX_HEADER_SIZE: usize = 8;
 
+/// CRC32 checksum size in bytes.
+const CRC_SIZE: usize = 4;
+
 struct PackInner {
     index: HashMap<Hash, (u64, u32)>, // hash → (data_offset, data_length)
     file: File,
@@ -64,7 +67,13 @@ impl ObjectStore {
         let mut write_pos: u64 = 0;
 
         if pack_exists {
-            let pack_len = file.metadata().context("reading pack metadata")?.len();
+            // Use file handle to get length (not fs::metadata on path — NFS stale cache safe)
+            let pack_len = file
+                .seek(SeekFrom::End(0))
+                .context("seeking to end of pack file")?;
+            file.seek(SeekFrom::Start(0))
+                .context("seeking back to start")?;
+
             // Try loading persisted index first
             if let Some(loaded) = Self::load_index(&idx_path, pack_len)? {
                 index = loaded.0;
@@ -77,8 +86,7 @@ impl ObjectStore {
 
         if legacy_exists && !pack_exists {
             // Migrate from old per-file layout
-            write_pos =
-                Self::migrate_legacy(&legacy_dir, &mut file, &mut index, write_pos)?;
+            write_pos = Self::migrate_legacy(&legacy_dir, &mut file, &mut index, write_pos)?;
             file.sync_all().context("syncing after migration")?;
             fs::remove_dir_all(&legacy_dir).context("removing legacy objects dir")?;
         }
@@ -117,10 +125,7 @@ impl ObjectStore {
             .file
             .write_all(&data_len.to_le_bytes())
             .context("writing data length")?;
-        inner
-            .file
-            .write_all(&hash.0)
-            .context("writing hash")?;
+        inner.file.write_all(&hash.0).context("writing hash")?;
         inner
             .file
             .write_all(&compressed)
@@ -177,7 +182,10 @@ impl ObjectStore {
     /// Returns the write position (end of last valid entry).
     /// Truncates the file at the last valid entry if a partial write is detected.
     fn scan_pack(file: &mut File, index: &mut HashMap<Hash, (u64, u32)>) -> Result<u64> {
-        let file_len = file.metadata().context("reading pack metadata")?.len();
+        // Use file handle to get length (NFS stale cache safe)
+        let file_len = file
+            .seek(SeekFrom::End(0))
+            .context("seeking to end for pack length")?;
         let mut pos: u64 = 0;
         let mut last_good_pos: u64 = 0;
 
@@ -238,30 +246,41 @@ impl ObjectStore {
         Ok(last_good_pos)
     }
 
-    /// Load the persisted index file. Returns None if the file doesn't exist,
-    /// is too small, or if pack_size doesn't match the actual pack file length
-    /// (indicating a crash between pack write and index write).
+    /// Load the persisted index file with CRC32 validation.
+    /// Returns None if the file doesn't exist, CRC mismatch, is too small,
+    /// or if pack_size doesn't match the actual pack file length.
     fn load_index(
         idx_path: &Path,
         pack_len: u64,
     ) -> Result<Option<(HashMap<Hash, (u64, u32)>, u64)>> {
-        let data = match fs::read(idx_path) {
+        let raw = match fs::read(idx_path) {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e).context("reading index file"),
         };
 
-        if data.len() < IDX_HEADER_SIZE {
+        // Validate CRC32 envelope
+        if raw.len() < CRC_SIZE {
+            return Ok(None);
+        }
+        let stored_crc = u32::from_le_bytes(raw[..CRC_SIZE].try_into().unwrap());
+        let payload = &raw[CRC_SIZE..];
+        let computed_crc = crc32fast::hash(payload);
+        if stored_crc != computed_crc {
+            return Ok(None); // CRC mismatch → fall back to scan_pack
+        }
+
+        if payload.len() < IDX_HEADER_SIZE {
             return Ok(None);
         }
 
-        let stored_pack_size = u64::from_le_bytes(data[..8].try_into().unwrap());
+        let stored_pack_size = u64::from_le_bytes(payload[..8].try_into().unwrap());
         if stored_pack_size != pack_len {
             // Pack file changed since index was written — stale
             return Ok(None);
         }
 
-        let entry_bytes = &data[IDX_HEADER_SIZE..];
+        let entry_bytes = &payload[IDX_HEADER_SIZE..];
         if entry_bytes.len() % IDX_ENTRY_SIZE != 0 {
             return Ok(None);
         }
@@ -283,26 +302,40 @@ impl ObjectStore {
         Ok(Some((index, stored_pack_size)))
     }
 
-    /// Atomically write the index file (temp + fsync + rename).
+    /// Atomically write the checksummed index file (CRC32 + temp + fsync + rename + fsync-parent).
     fn save_index(
         idx_path: &Path,
         index: &HashMap<Hash, (u64, u32)>,
         pack_size: u64,
     ) -> Result<()> {
         let tmp = idx_path.with_extension("idx.tmp");
-        let mut buf = Vec::with_capacity(IDX_HEADER_SIZE + index.len() * IDX_ENTRY_SIZE);
 
-        buf.extend_from_slice(&pack_size.to_le_bytes());
+        // Build payload: [8 bytes pack_size][entries...]
+        let mut payload = Vec::with_capacity(IDX_HEADER_SIZE + index.len() * IDX_ENTRY_SIZE);
+        payload.extend_from_slice(&pack_size.to_le_bytes());
         for (hash, &(data_offset, data_len)) in index {
-            buf.extend_from_slice(&hash.0);
-            buf.extend_from_slice(&data_offset.to_le_bytes());
-            buf.extend_from_slice(&data_len.to_le_bytes());
+            payload.extend_from_slice(&hash.0);
+            payload.extend_from_slice(&data_offset.to_le_bytes());
+            payload.extend_from_slice(&data_len.to_le_bytes());
         }
 
+        // Prepend CRC32
+        let crc = crc32fast::hash(&payload);
+
         let mut f = File::create(&tmp).context("creating temp index file")?;
-        f.write_all(&buf).context("writing index")?;
+        f.write_all(&crc.to_le_bytes())
+            .context("writing index CRC32")?;
+        f.write_all(&payload).context("writing index")?;
         f.sync_all().context("syncing index file")?;
         fs::rename(&tmp, idx_path).context("renaming index file")?;
+
+        // fsync parent directory (NFS safety)
+        if let Some(parent) = idx_path.parent() {
+            if let Ok(dir) = fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+        }
+
         Ok(())
     }
 
@@ -362,8 +395,7 @@ impl ObjectStore {
                     .context("seeking for migration write")?;
                 file.write_all(&data_len.to_le_bytes())
                     .context("writing migrated data length")?;
-                file.write_all(&hash.0)
-                    .context("writing migrated hash")?;
+                file.write_all(&hash.0).context("writing migrated hash")?;
                 file.write_all(&compressed)
                     .context("writing migrated data")?;
 
@@ -503,10 +535,7 @@ mod tests {
 
         // Append garbage (simulating a partial write / crash)
         {
-            let mut f = OpenOptions::new()
-                .append(true)
-                .open(&pack_path)
-                .unwrap();
+            let mut f = OpenOptions::new().append(true).open(&pack_path).unwrap();
             f.write_all(&[0xFF; 10]).unwrap(); // partial entry
         }
 
@@ -541,5 +570,29 @@ mod tests {
         assert!(store.exists(&hash));
         let retrieved = store.get(&hash).unwrap();
         assert_eq!(retrieved, data);
+    }
+
+    #[test]
+    fn corrupt_index_crc_triggers_scan_pack_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let hash;
+
+        {
+            let store = open_store(dir.path(), Compression::None);
+            hash = store.put(b"important data").unwrap();
+            store.flush().unwrap();
+        }
+
+        // Corrupt the index file CRC
+        let idx_path = dir.path().join("objects.idx");
+        let mut data = fs::read(&idx_path).unwrap();
+        data[0] ^= 0xFF; // flip a CRC byte
+        fs::write(&idx_path, &data).unwrap();
+
+        // Reopen — should fall back to scan_pack and recover
+        let store = open_store(dir.path(), Compression::None);
+        assert!(store.exists(&hash));
+        let retrieved = store.get(&hash).unwrap();
+        assert_eq!(retrieved, b"important data");
     }
 }

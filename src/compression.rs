@@ -63,7 +63,6 @@ impl Compression {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

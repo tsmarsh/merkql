@@ -45,8 +45,7 @@ fn concurrent_producers_same_partition() {
             thread::spawn(move || {
                 let producer = Broker::producer(&broker);
                 for i in 0..n_per_thread {
-                    let pr =
-                        ProducerRecord::new("conc-prod", None, format!("t{}-v{}", t, i));
+                    let pr = ProducerRecord::new("conc-prod", None, format!("t{}-v{}", t, i));
                     producer.send(&pr).unwrap();
                 }
             })
@@ -127,8 +126,7 @@ fn concurrent_proof_during_writes() {
                     }
                     let o = offset % max;
                     if let Ok(Some(proof)) = partition.proof(o) {
-                        if let Ok(valid) = MerkleTree::verify_proof(&proof, partition.store())
-                        {
+                        if let Ok(valid) = MerkleTree::verify_proof(&proof, partition.store()) {
                             assert!(valid, "invalid proof at offset {} (thread {})", o, t);
                             verified += 1;
                         }

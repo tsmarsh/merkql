@@ -17,15 +17,17 @@ All I/O operations use `.context()` for error propagation. Permission errors sur
 
 ## 3. Corrupt Metadata Files
 
-| File | On Corruption | Data Loss | Tested |
-|---|---|---|---|
-| **tree.snapshot** (truncated/invalid bincode) | `Partition::open` fails with deserialize error. Broker refuses to start. | None (data is in objects + index) | Yes (nemesis) |
-| **tree.snapshot** (missing) | Partition reconstructs empty tree. Existing records readable via index. New appends succeed. Merkle proofs for old records unavailable until tree is rebuilt. | Proof history | Yes (nemesis) |
-| **offsets.idx** (truncated) | Next offset recalculated from `file_size / 32`. Partial entries (< 32 bytes) at the end are silently ignored. Records up to the last complete entry are readable. | Last partial record | Yes (nemesis) |
-| **retention.bin** (corrupt) | `Partition::open` fails with deserialize error. | None | No |
-| **meta.bin** (corrupt) | `Topic::reopen` fails. Broker initialization fails for this topic. | None (objects intact) | No |
-| **offsets.bin** (corrupt) | `ConsumerGroup::open` fails with deserialize error. | Committed offsets | No |
-| **config.bin** | Written on every `Broker::open`, never read back on reopen (config is passed in). | None | N/A |
+All metadata files are protected by a 4-byte CRC32 checksum prepended to the data. On CRC mismatch, each file recovers to a safe default rather than failing to open.
+
+| File | On CRC Mismatch | Recovery | Data Loss | Tested |
+|---|---|---|---|---|
+| **tree.snapshot** | Partition opens with empty tree. Records still readable via index. Merkle proofs for old records unavailable until tree is rebuilt by new appends. | Automatic | Proof history | Yes (unit + nemesis) |
+| **offsets.idx** (truncated) | Next offset recalculated from `file_size / 32`. Partial entries (< 32 bytes) at the end are silently ignored. Records up to the last complete entry are readable. | Automatic | Last partial record | Yes (nemesis) |
+| **retention.bin** | Defaults to `min_valid_offset = 0`. All records become readable (safe — serves older records rather than hiding valid ones). | Automatic | None | Yes (unit) |
+| **meta.bin** (corrupt) | `Topic::reopen` fails. Broker initialization fails for this topic. | Manual | None (objects intact) | No |
+| **offsets.bin** (consumer group) | Defaults to empty offsets. Consumer re-consumes from beginning (safe for at-least-once semantics). | Automatic | Committed offsets | Yes (unit) |
+| **objects.pack.idx** | Falls back to `scan_pack` — full sequential scan of the pack file to rebuild the in-memory index. | Automatic | None | Yes (unit) |
+| **config.bin** | Written on every `Broker::open`, never read back on reopen (config is passed in). | N/A | None | N/A |
 
 ## 4. Corrupt Object Store Files
 
@@ -64,19 +66,25 @@ If a thread panics while holding a lock:
 
 ## 7. NFS / Network Filesystems
 
-The atomic write pattern (`temp file → fsync → rename`) assumes `rename` is atomic. **On NFS, rename is NOT atomic.** Additionally, NFS may cache file metadata, leading to stale reads of `offsets.idx` size.
+merkql is NFS-safe (NFS v4.1 / EFS compatible) with the following hardening:
 
-**merkql should NOT be used on NFS or other network filesystems.**
+- **CRC32 checksums**: All metadata files (tree.snapshot, retention.bin, offsets.bin, objects.pack.idx) are wrapped with a 4-byte CRC32 checksum. On mismatch, each file recovers to a safe default (see section 3).
+- **fsync parent directory**: After every `rename` in atomic writes, the parent directory is fsynced to ensure directory entries are durable on NFS.
+- **File-handle-based lengths**: File sizes are determined by seeking to the end of an open file handle, not by `fs::metadata()` on the path. This avoids NFS attribute caching (stale `st_size`).
+
+**Limitations**: `rename()` is not strictly atomic on NFS. The CRC32 checksums protect against partial/corrupt renames — if the data doesn't pass CRC validation, the safe default is used.
 
 ## 8. Concurrent Access from Multiple Processes
 
-**NOT SUPPORTED.** merkql has no file-level locking. Two processes writing to the same `.merkql` directory will corrupt data:
+Supported via `flock`-based writer exclusion:
 
-- Duplicate offsets in the index
-- Inconsistent tree snapshots
-- Lost consumer group commits
+- **Partition writes**: `Partition::append` and `Partition::append_batch` acquire an exclusive `flock` on `partition.lock` in the partition directory before writing. The lock is released when the write completes.
+- **Consumer group commits**: `ConsumerGroup::persist` acquires an exclusive `flock` on `group.lock` before writing offsets.
+- **Readers**: Do NOT acquire locks. Append-only data is safe for concurrent reads. The index file (`offsets.idx`) is only appended to, so readers see a consistent prefix.
 
-Use a single process. If you need multi-process access, put an API server in front of merkql.
+**Model**: Single writer (serialized by flock), concurrent readers. A single writer can saturate EFS throughput (~200-1000 writes/sec at 1-5ms per fsync). The flock provides correctness, not performance — multi-writer adds complexity for zero throughput gain.
+
+**Note**: In the typical deployment (single Lambda / single process), the flock is a safety net rather than a contention point. The `RwLock` on partitions in `Topic` already serializes in-process writes.
 
 ## 9. Orphaned .tmp Files
 
@@ -120,21 +128,8 @@ Every `.unwrap()` and `.expect()` in non-test code:
 
 All lock-poisoning panics are cascading failures that indicate a prior logic bug. They do not cause data corruption (the data on disk remains consistent).
 
-## 11. Storage Overhead (Small-File Problem)
+## 11. Storage Overhead
 
-The content-addressed object store creates one file per object: one for the serialized record, one for the merkle leaf node, and approximately one for each branch node. At scale this means ~3 files per record appended.
+Objects are stored in a single append-only pack file (`objects.pack`) with a persisted index (`objects.pack.idx`). This eliminates the small-file problem — all objects share a single file, with no per-object filesystem overhead.
 
-Each file is typically 50-200 bytes of actual data, but filesystem block allocation rounds up to 4KB per file. This creates a **~13x space amplification**: 100K records produce ~3.4MB of data but consume ~44MB on disk.
-
-| Records | Actual Data | Allocated (ext4, 4KB blocks) | Files |
-|---|---|---|---|
-| 10K | ~340 KB | ~4.4 MB | ~30K |
-| 100K | ~3.4 MB | ~44 MB | ~300K |
-| 1M | ~34 MB | ~440 MB | ~3M |
-
-**Implications**:
-- **tmpfs**: Especially problematic since every inode consumes real RAM. 1M records can exhaust a 20GB tmpfs.
-- **Inode exhaustion**: Some filesystems have fixed inode limits. 3M files for 1M records can hit these.
-- **Directory performance**: The 256-way hash prefix directories mitigate this, but very large partitions (>1M records) may see slower `readdir` and filesystem metadata operations.
-
-**Future mitigation**: Pack objects into segment files (like git packfiles) to amortize filesystem overhead. This would reduce the file count by 1000x+ while preserving content-addressing.
+**Per-partition files**: `offsets.idx`, `objects.pack`, `objects.pack.idx`, `tree.snapshot`, `retention.bin`, `partition.lock` — 6 files regardless of record count.
